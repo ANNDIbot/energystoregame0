@@ -1,0 +1,1519 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>干支平衡屋 · Ganzhi Equilibrium</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:#0a0e12;display:flex;align-items:center;justify-content:center;
+  min-height:100dvh;overflow:hidden;
+  padding-top:max(8px,env(safe-area-inset-top));
+  padding-right:max(8px,env(safe-area-inset-right));
+  padding-bottom:max(8px,env(safe-area-inset-bottom));
+  padding-left:max(8px,env(safe-area-inset-left));
+}
+canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;cursor:default;touch-action:manipulation}
+@media (orientation: landscape) and (pointer: coarse){
+  body{
+    padding-top:env(safe-area-inset-top);
+    padding-right:env(safe-area-inset-right);
+    padding-bottom:env(safe-area-inset-bottom);
+    padding-left:env(safe-area-inset-left);
+  }
+}
+</style>
+</head>
+<body><canvas id="c"></canvas>
+<script>
+// ═══════════════════════════════════════════════════════
+//  干支平衡屋  ·  像素风  v3  —  参考图风格重制
+//  逻辑分辨率 240×160，放大 3x = 720×480
+// ═══════════════════════════════════════════════════════
+const SC=3, BASE_LW=240, LH=160;
+let LW=BASE_LW;
+let FONT_SCALE=1.12;
+const C=document.getElementById('c');
+C.width=LW*SC; C.height=LH*SC;
+const ctx=C.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+let TABLE_X=114, TABLE_Y=72, TABLE_W=118, TABLE_H=12;
+const BTNS={
+  start:{x:LW/2-30,y:LH/2+36,w:60,h:12,label:'开始营业'},
+  next: {x:LW/2-40,y:LH-14,  w:80,h:11,label:'迎接下一位客人'},
+  diag: {x:LW-50,  y:80,     w:44,h:10,label:'查看五行'},
+  rule: {x:LW-34,  y:15,     w:28,h:11,label:'规则'},
+};
+
+function pickFontScale(){
+  const coarse=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;
+  const shortSide=Math.min(window.innerWidth,window.innerHeight);
+  if(coarse){
+    if(shortSide<430) return 1.46;
+    if(shortSide<640) return 1.36;
+    return 1.28;
+  }
+  if(shortSide<760) return 1.2;
+  return 1.08;
+}
+function isMobileLike(){
+  return !!(window.matchMedia&&window.matchMedia('(pointer: coarse)').matches);
+}
+function isLandscapeViewport(){
+  return window.innerWidth>=window.innerHeight;
+}
+function canPlayNow(){
+  return !isMobileLike()||isLandscapeViewport();
+}
+function syncLayout(){
+  const dx=Math.max(0,LW-BASE_LW);
+  TABLE_X=114+Math.floor(dx*0.35);
+  TABLE_Y=72; TABLE_W=118; TABLE_H=12;
+  BTNS.start={x:LW/2-30,y:LH/2+36,w:60,h:12,label:'开始营业'};
+  BTNS.next ={x:LW/2-40,y:LH-14,  w:80,h:11,label:'迎接下一位客人'};
+  BTNS.diag ={x:LW-50,  y:80,     w:44,h:10,label:'查看五行'};
+  BTNS.rule ={x:LW-34,  y:15,     w:28,h:11,label:'规则'};
+}
+function resize(){
+  const safe=16;
+  const vw=Math.max(120,window.innerWidth-safe);
+  const vh=Math.max(120,window.innerHeight-safe);
+  FONT_SCALE=pickFontScale();
+  const mobileLandscape=isMobileLike()&&isLandscapeViewport();
+  if(mobileLandscape){
+    const targetLW=clamp(Math.round(LH*(vw/vh)),BASE_LW,360);
+    LW=targetLW;
+  } else {
+    LW=BASE_LW;
+  }
+  C.width=LW*SC; C.height=LH*SC;
+  ctx.imageSmoothingEnabled=false;
+  syncLayout();
+  const s=Math.min(vw/(LW*SC),vh/(LH*SC));
+  if(mobileLandscape){
+    // 宽屏扩展逻辑宽度，不拉伸像素，保持等比
+    C.style.width=(LW*SC*s)+'px';
+    C.style.height=(LH*SC*s)+'px';
+  }else{
+    C.style.width=(LW*SC*s)+'px';
+    C.style.height=(LH*SC*s)+'px';
+  }
+}
+resize(); window.addEventListener('resize',resize);
+
+// ── 基础绘图 ───────────────────────────────────────────
+function p(x,y,w,h,c){
+  if(!c)return;
+  ctx.fillStyle=c;
+  ctx.fillRect(Math.round(x)*SC,Math.round(y)*SC,Math.round(w)*SC,Math.round(h)*SC);
+}
+function pA(x,y,w,h,c,a){ctx.globalAlpha=a;p(x,y,w,h,c);ctx.globalAlpha=1;}
+function outline(x,y,w,h,c,t){
+  t=t||1;
+  p(x,y,w,t,c); p(x,y+h-t,w,t,c);
+  p(x,y,t,h,c); p(x+w-t,y,t,h,c);
+}
+// 文字（保持像素感用 Courier）
+function fontPx(sz){return sz*FONT_SCALE*SC;}
+function tLH(sz){return Math.ceil(sz*2.05*FONT_SCALE);}
+function tx(str,x,y,sz,col,align,shadow){
+  const fsz=fontPx(sz);
+  ctx.font=`bold ${fsz}px "Courier New",monospace`;
+  ctx.textBaseline='top'; ctx.textAlign=align||'left';
+  if(shadow){ctx.fillStyle=shadow;ctx.fillText(str,Math.round(x)*SC+SC,Math.round(y)*SC+SC);}
+  ctx.fillStyle=col; ctx.fillText(str,Math.round(x)*SC,Math.round(y)*SC);
+}
+function txC(str,cx,y,sz,col,shadow){
+  ctx.font=`bold ${fontPx(sz)}px "Courier New",monospace`;
+  const w=ctx.measureText(str).width/SC;
+  tx(str,cx-w/2,y,sz,col,'left',shadow);
+}
+function txR(str,rx,y,sz,col,shadow){
+  ctx.font=`bold ${fontPx(sz)}px "Courier New",monospace`;
+  const w=ctx.measureText(str).width/SC;
+  tx(str,rx-w,y,sz,col,'left',shadow);
+}
+function tW(str,sz){
+  ctx.font=`bold ${fontPx(sz)}px "Courier New",monospace`;
+  return ctx.measureText(str).width/SC;
+}
+function wrapTextLines(text,maxW,sz){
+  ctx.font=`bold ${fontPx(sz)}px "Courier New",monospace`;
+  const src=(text||'').split('\n');
+  const out=[];
+  src.forEach(seg=>{
+    let line='';
+    for(const ch of [...seg]){
+      const test=line+ch;
+      if(ctx.measureText(test).width/SC>maxW&&line){
+        out.push(line);
+        line=ch;
+      } else {
+        line=test;
+      }
+    }
+    out.push(line||'');
+  });
+  return out.length?out:[''];
+}
+
+// ── 调色板（参考图风格）──────────────────────────────
+const C0={
+  // 背景
+  bg_wall:'#2a3d3a',  bg_wall2:'#243530', bg_wall3:'#1e2e2a',
+  bg_floor:'#1a1a22', bg_floor2:'#141420',
+  // 框线
+  border:'#4a6860',   border2:'#3a5450', border_gold:'#c8a040',
+  gold1:'#5e3a14',    gold2:'#8a5a22',   gold3:'#b0752e', gold4:'#d89a48',
+  // 木材（货架/柜台）
+  wood1:'#3d2010',    wood2:'#5a3018',   wood3:'#7a4820',
+  wood4:'#9a6030',    wood5:'#bc7a3a',
+  // UI
+  ui_dark:'#0d1018',  ui_mid:'#141820',  ui_light:'#1e2830',
+  ui_border:'#2a3840',
+  // 文字
+  tw:'#e8f0e0',       ty:'#f0c840',      tg:'#60d850',
+  tr:'#f04838',       tb:'#50a8f8',
+  // 五行
+  W_c:'#30b840',W_l:'#58e060',W_d:'#186028',W_bg:'#0a1e0e',
+  F_c:'#e83020',F_l:'#f86040',F_d:'#801010',F_bg:'#1e0c08',
+  E_c:'#c88828',E_l:'#e8b040',E_d:'#705008',E_bg:'#1e1604',
+  M_c:'#8898a8',M_l:'#b0c0d0',M_d:'#404850',M_bg:'#0c1018',
+  Wa_c:'#2878c8',Wa_l:'#50a0f0',Wa_d:'#103060',Wa_bg:'#08101e',
+  // 角色
+  black:'#0d1018', white:'#f0f0e8',
+};
+const EL_C={
+  wood: {n:'木',c:C0.W_c, l:C0.W_l, d:C0.W_d, bg:C0.W_bg},
+  fire: {n:'火',c:C0.F_c, l:C0.F_l, d:C0.F_d, bg:C0.F_bg},
+  earth:{n:'土',c:C0.E_c, l:C0.E_l, d:C0.E_d, bg:C0.E_bg},
+  metal:{n:'金',c:C0.M_c, l:C0.M_l, d:C0.M_d, bg:C0.M_bg},
+  water:{n:'水',c:C0.Wa_c,l:C0.Wa_l,d:C0.Wa_d,bg:C0.Wa_bg},
+};
+const ELS=['wood','fire','earth','metal','water'];
+const BEATS={wood:'earth',fire:'metal',earth:'water',metal:'wood',water:'fire'};
+const GENS={wood:'fire',fire:'earth',earth:'metal',metal:'water',water:'wood'};
+
+// ── 游戏数据 ───────────────────────────────────────────
+const NPCS=[
+  {name:'阿炎',title:'暴躁',dom:'fire',
+   lines:['脾气太暴躁了！跟谁都吵架！','心里像有团火，烧得我难受！'],
+   energy:{wood:35,fire:90,earth:45,metal:15,water:20}},
+  {name:'阿溟',title:'忧郁',dom:'water',
+   lines:['生活失去色彩了……每天很累。','心里积满了水，动不了。'],
+   energy:{wood:30,fire:15,earth:20,metal:25,water:88}},
+  {name:'阿藤',title:'思虑过重',dom:'wood',
+   lines:['脑子里念头太多，停不下来……','思绪像藤蔓缠住了我。'],
+   energy:{wood:85,fire:40,earth:30,metal:18,water:35}},
+  {name:'阿磐',title:'拖延症',dom:'earth',
+   lines:['什么事都拖着，迈不动步……','整个人沉得像石头。'],
+   energy:{wood:25,fire:28,earth:88,metal:40,water:20}},
+  {name:'阿锋',title:'固执完美主义',dom:'metal',
+   lines:['很难听进别人的话……','心里绷得很紧，像要断掉。'],
+   energy:{wood:20,fire:22,earth:45,metal:90,water:28}},
+];
+
+const ITEMS=[
+  {id:'sprout', name:'翠苗', el:'wood', desc:'木气疏土'},
+  {id:'bottle', name:'水瓶', el:'water',desc:'流水镇火'},
+  {id:'flame',  name:'火晶', el:'fire', desc:'温火化金'},
+  {id:'gear',   name:'铜齿', el:'metal',desc:'金声克木'},
+  {id:'stone',  name:'玄石', el:'earth',desc:'厚土筑坝'},
+  {id:'leaf',   name:'青叶', el:'wood', desc:'木气舒展'},
+  {id:'drop',   name:'露珠', el:'water',desc:'砚墨含水'},
+  {id:'ember',  name:'炎核', el:'fire', desc:'焰提阳气'},
+  {id:'coin_m', name:'金符', el:'metal',desc:'金针定向'},
+  {id:'clay',   name:'陶片', el:'earth',desc:'土器盛物'},
+];
+
+const YEARS=[
+  {name:'甲辰年',boost:['wood','earth']},
+  {name:'乙巳年',boost:['wood','fire']},
+  {name:'丙午年',boost:['fire']},
+  {name:'丁未年',boost:['fire','earth']},
+  {name:'戊申年',boost:['earth','metal']},
+];
+
+// ── 状态 ──────────────────────────────────────────────
+let state='title';
+let coins=0,day=1,yearIdx=0;
+let npcPool=[],curNPC=null;
+let curEnergy={},dispEnergy={wood:50,fire:50,earth:50,metal:50,water:50};
+let tableItems=[];
+let energyVisible=false,balanceDone=false;
+let npcX=-30,npcAnim=0,dialogAlpha=0,dialogLine='';
+let resultTimer=0;
+let particles=[],floats=[];
+let hovItem=null,tick=0;
+const mouse={x:0,y:0};
+let ruleOpen=false,npcMood=0;
+let uiDebug=false;
+let debugRects=[];
+
+function toL(e){
+  const r=C.getBoundingClientRect();
+  return{x:(e.clientX-r.left)*(LW*SC/r.width)/SC,
+         y:(e.clientY-r.top)*(LH*SC/r.height)/SC};
+}
+function regUI(name,x,y,w,h,c){
+  if(!uiDebug) return;
+  debugRects.push({name,x,y,w,h,c:c||'#5cf0d0'});
+}
+function drawDebugOverlay(){
+  if(!uiDebug) return;
+  // 场景边界与安全区（逻辑坐标）
+  outline(0,0,LW,LH,'#00f0a0',1);
+  outline(3,3,LW-6,LH-6,'#20a0ff',1);
+  debugRects.forEach(r=>{
+    pA(r.x,r.y,r.w,r.h,r.c,0.14);
+    outline(r.x,r.y,r.w,r.h,r.c,1);
+  });
+  pA(4,14,74,8,C0.black,0.6);
+  tx('[F2] DEBUG ON',6,15,2.6,C0.ty,'left',C0.black);
+}
+function drawRotateHint(){
+  if(canPlayNow()) return;
+  pA(0,0,LW,LH,C0.black,0.82);
+  const bw=188,bh=72,bx=(LW-bw)/2,by=(LH-bh)/2;
+  const pulse=(Math.sin(tick*0.15)+1)*0.5;
+  p(bx,by,bw,bh,C0.ui_dark);
+  p(bx+1,by+1,bw-2,bh-2,C0.ui_mid);
+  outline(bx,by,bw,bh,C0.border_gold,2);
+
+  // 标题与说明
+  txC('请横屏游玩',LW/2,by+6,4.7,C0.ty,C0.black);
+  txC('Rotate to Landscape',LW/2,by+20,3.2,C0.tw,C0.black);
+  txC('当前已暂停交互',LW/2,by+58,3.1,C0.tr,C0.black);
+
+  // 左：竖屏手机（灰）
+  const px=bx+24, py=by+30;
+  p(px,py,12,20,'#3b4450');
+  p(px+1,py+1,10,18,'#657180');
+  p(px+2,py+3,8,12,'#243140');
+  p(px+5,py+17,2,1,'#a8b0bc');
+
+  // 右：横屏手机（高亮）
+  const lx=bx+bw-50, ly=by+33;
+  p(lx,ly,20,12,C0.Wa_d);
+  p(lx+1,ly+1,18,10,C0.Wa_c);
+  p(lx+3,ly+2,12,8,'#1a3f68');
+  p(lx+16,ly+5,1,2,'#d8f0ff');
+  pA(lx-1,ly-1,22,14,C0.Wa_l,0.16+0.22*pulse);
+
+  // 中间旋转箭头（动态闪烁）
+  const ax=LW/2-10, ay=by+34;
+  p(ax,ay,20,2,C0.ty);
+  p(ax+18,ay-2,2,6,C0.ty);
+  p(ax+16,ay-3,2,8,C0.ty);
+  p(ax+13,ay-4,2,10,C0.ty);
+  pA(ax,ay-5,20,12,C0.ty,0.18+0.18*pulse);
+  txC('横屏后自动继续',LW/2,by+48,3.1,C0.tg,C0.black);
+}
+
+// ══════════════════════════════════════════════════════
+//  场景绘制
+// ══════════════════════════════════════════════════════
+
+function drawScene(){
+  // ── 整体背景框（像参考图的青绿色边框） ──
+  p(0,0,LW,LH,C0.bg_floor2);
+
+  // 外框（多层像素边框）
+  p(0,0,LW,LH,C0.bg_floor2);
+  outline(0,0,LW,LH,C0.border,2);
+  outline(2,2,LW-4,LH-4,C0.border2,1);
+
+  // 角落菱形装饰（参考图四角有装饰）
+  drawDiamond(4,4,C0.border_gold);
+  drawDiamond(LW-8,4,C0.border_gold);
+  drawDiamond(4,LH-8,C0.border_gold);
+  drawDiamond(LW-8,LH-8,C0.border_gold);
+
+  // ── 墙壁区域（深青绿色）──
+  p(3,3,LW-6,84,C0.bg_wall);
+  // 墙面微纹（竖向暗纹）
+  for(let x=3;x<LW-3;x+=12){
+    p(x,3,1,84,C0.bg_wall3);
+  }
+  // 墙顶暗边
+  p(3,3,LW-6,2,C0.bg_wall3);
+
+  // ── 地板区域（深色地板） ──
+  p(3,87,LW-6,LH-90,C0.bg_floor);
+  // 地板砖（水平线）
+  for(let y=87;y<LH-3;y+=8){
+    p(3,y,LW-6,1,C0.bg_floor2);
+  }
+  // 地板反光（靠近柜台）
+  for(let x=3;x<LW-3;x+=16){
+    pA(x,88,8,2,'#ffffff',0.03);
+  }
+
+  // ── 墙/地交界线 ──
+  p(3,85,LW-6,3,C0.wood1);
+  p(3,85,LW-6,1,C0.wood3); // 高光
+  p(3,87,LW-6,1,C0.bg_floor2); // 暗
+
+  // ── 货架（左中区域）──
+  drawShelf();
+
+  // ── 柜台 ──
+  drawCounter();
+
+  // ── 标题文字（参考图顶部大标题风格） ──
+  if(state==='title') return; // 标题画面时不画场景标题
+  // HUD在顶层绘制
+}
+
+function drawWideSidebar(){
+  if(LW<=BASE_LW+12) return;
+  const sx=BASE_LW+2, sy=14, sw=LW-sx-4, sh=LH-18;
+  p(sx,sy,sw,sh,C0.ui_dark);
+  p(sx+1,sy+1,sw-2,sh-2,C0.ui_mid);
+  outline(sx,sy,sw,sh,C0.border,1);
+  p(sx+2,sy+2,sw-4,9,C0.ui_light);
+  outline(sx+2,sy+2,sw-4,9,C0.ui_border,1);
+  tx('宽屏信息',sx+4,sy+3,2.8,C0.ty,'left',C0.black);
+
+  const yr=YEARS[yearIdx];
+  tx('流年：'+yr.name,sx+4,sy+14,2.7,C0.tw,'left',C0.black);
+  tx('加成：',sx+4,sy+21,2.7,C0.tw,'left',C0.black);
+  yr.boost.forEach((el,i)=>{
+    drawItemIcon(el,sx+24+i*13,sy+19,10);
+    tx(EL_C[el].n,sx+26+i*13,sy+29,2.3,EL_C[el].c,'left',C0.black);
+  });
+
+  let stat='待客中',statC=C0.tw;
+  if(curNPC){
+    const b=getBalance();
+    stat=b.balanced?'平衡':(EL_C[b.highest].n+'气偏旺');
+    statC=b.balanced?C0.tg:EL_C[b.highest].c;
+  }
+  tx('状态：'+stat,sx+4,sy+38,2.7,statC,'left',C0.black);
+  tx('视野：等比扩展(无拉伸)',sx+4,sy+46,2.5,C0.tg,'left',C0.black);
+
+  tx('[R]规则  [E]五行',sx+4,sy+sh-18,2.5,C0.tw,'left',C0.black);
+  tx('[1-0]放置  [Back]撤回',sx+4,sy+sh-11,2.4,C0.tw,'left',C0.black);
+  regUI('wideSidebar',sx,sy,sw,sh,'#66c8ff');
+}
+
+function drawDiamond(x,y,c){
+  p(x+1,y,2,1,c); p(x,y+1,1,2,c); p(x+3,y+1,1,2,c); p(x+1,y+3,2,1,c);
+  p(x+1,y+1,2,2,c);
+}
+
+function drawShelf(){
+  // 参考图：货架是两层横板，靠墙，有深色背板
+  const sx=8,sy=12,sw=100;
+
+  // 背板（深色）
+  p(sx,sy,sw,68,C0.bg_wall3);
+  outline(sx,sy,sw,68,C0.border2,1);
+
+  // 两层横板
+  [36,60].forEach(hy=>{
+    p(sx,hy,sw,5,C0.wood2);   // 板体
+    p(sx,hy,sw,1,C0.wood4);   // 高光顶
+    p(sx,hy+4,sw,1,C0.wood1); // 暗底
+    // 板前沿
+    p(sx,hy+3,sw,2,C0.wood3);
+  });
+
+  // 货架顶板
+  p(sx,sy,sw,4,C0.wood2);
+  p(sx,sy,sw,1,C0.wood4);
+  p(sx,sy+3,sw,1,C0.wood1);
+
+  // 货架招牌（参考图有标题）
+  p(sx+8,sy-10,sw-16,10,C0.ui_dark);
+  outline(sx+8,sy-10,sw-16,10,C0.border_gold,1);
+  txC('五行道具',sx+sw/2,sy-9,3.5,C0.ty,C0.black);
+}
+
+function drawCounter(){
+  // 参考图：柜台是一个宽横台，玩家角色在后面
+  const cx=8,cy=82,cw=LW-16,ch=8;
+  // 台面
+  p(cx,cy,cw,ch,C0.wood2);
+  p(cx,cy,cw,2,C0.wood4);    // 台面高光
+  p(cx,cy+1,cw,1,C0.wood5);  // 最亮
+  p(cx,cy+ch-1,cw,1,C0.wood1); // 台底暗
+  // 台面纹
+  for(let x=cx+12;x<cx+cw;x+=14){
+    p(x,cy+2,1,ch-3,C0.wood1);
+  }
+  // 台前挡板（有厚度感）
+  p(cx,cy+ch,cw,4,C0.wood1);
+  p(cx,cy+ch,cw,1,C0.wood2);
+}
+
+// ══════════════════════════════════════════════════════
+//  道具图标（参考图风格：简洁发光图标）
+// ══════════════════════════════════════════════════════
+function drawItemIcon(el,x,y,sz){
+  sz=sz||10;
+  const h=Math.floor(sz/2);
+  const ec=EL_C[el];
+
+  switch(el){
+    case 'wood': // 绿色幼苗
+      // 茎
+      p(x+h,y+h,1,h,ec.d);
+      p(x+h,y+h,1,h,ec.c);
+      // 叶片
+      p(x+h-3,y+h-1,3,3,ec.d);
+      p(x+h-2,y+h-2,2,2,ec.c);
+      p(x+h+1,y+h+1,3,3,ec.d);
+      p(x+h+1,y+h+1,2,2,ec.c);
+      // 高光
+      p(x+h-1,y+h-1,1,1,ec.l);
+      p(x+h+2,y+h+2,1,1,ec.l);
+      break;
+    case 'water': // 蓝色水瓶/水滴
+      // 瓶身
+      p(x+h-2,y+2,5,7,ec.d);
+      p(x+h-1,y+3,3,5,ec.c);
+      p(x+h,  y+3,2,4,ec.l);
+      // 瓶口
+      p(x+h-1,y+1,3,2,ec.d);
+      p(x+h,  y+1,1,1,ec.c);
+      // 高光
+      p(x+h-1,y+4,1,2,'#a0d8ff');
+      break;
+    case 'fire': // 红色火焰
+      // 外焰
+      p(x+h-1,y+h,3,h,ec.d);
+      p(x+h-2,y+h-1,5,h+1,ec.c);
+      p(x+h-3,y+h+1,7,h-1,ec.c);
+      // 内焰
+      p(x+h-1,y+h+1,3,h-1,ec.l);
+      p(x+h,  y+h,  2,h-2,'#ffee80');
+      // 火舌
+      p(x+h,  y+h-3,1,3,ec.l);
+      p(x+h-1,y+h-1,1,2,ec.c);
+      p(x+h+2,y+h-1,1,2,ec.c);
+      break;
+    case 'metal': // 灰色齿轮
+      // 齿轮外圈
+      p(x+h-3,y+h-3,7,7,ec.d);
+      p(x+h-2,y+h-2,5,5,ec.c);
+      // 中心孔
+      p(x+h-1,y+h-1,3,3,ec.d);
+      p(x+h,  y+h,  1,1,C0.bg_wall);
+      // 齿
+      p(x+h-1,y+1,  3,2,ec.d);
+      p(x+h-1,y+sz-3,3,2,ec.d);
+      p(x+1,  y+h-1,2,3,ec.d);
+      p(x+sz-3,y+h-1,2,3,ec.d);
+      // 高光
+      p(x+h-2,y+h-2,1,1,ec.l);
+      break;
+    case 'earth': // 棕色石块
+      p(x+2,  y+4,  sz-5,sz-5,ec.d);
+      p(x+3,  y+3,  sz-6,sz-5,ec.c);
+      p(x+3,  y+3,  sz-8,sz-8,ec.l);
+      p(x+4,  y+4,  2,2,'#e8d090');
+      // 裂纹
+      p(x+6,  y+5,  1,4,ec.d);
+      p(x+4,  y+7,  3,1,ec.d);
+      break;
+  }
+}
+
+// 货架上的10个道具槽
+function getItemSlot(i){
+  // 参考图：货架两层，每层5个，从左到右
+  const row=Math.floor(i/5), col=i%5;
+  // 第一层 y≈14，第二层 y≈38（对应货架）
+  return {x:10+col*19, y:14+row*24};
+}
+
+function drawItems(){
+  ITEMS.forEach((item,i)=>{
+    const{x,y}=getItemSlot(i);
+    const ec=EL_C[item.el];
+    const hov=hovItem===i;
+    const used=tableItems.some(t=>t.item.id===item.id);
+    const inBal=state==='balancing';
+    const rec=curNPC&&isRec(item);
+    const dim=inBal&&!rec;
+
+    ctx.globalAlpha=used?0.28:dim?0.32:1;
+
+    // 图标发光底（参考图：道具悬浮在货架上，有淡发光）
+    if(!dim&&!used){
+      pA(x-1,y-1,14,14,ec.c,0.12);
+    }
+
+    // 推荐闪烁
+    if(rec&&inBal&&!used&&tick%24<12){
+      pA(x-2,y-2,16,16,ec.c,0.25);
+      outline(x-2,y-2,16,16,ec.c,1);
+    }
+
+    drawItemIcon(item.el,x,y,12);
+
+    ctx.globalAlpha=used?0.28:dim?0.38:1;
+    txC(item.name,x+6,y+13,2.8,ec.c,C0.black);
+    ctx.globalAlpha=1;
+
+    if(used){
+      pA(x-1,y-1,14,14,C0.black,0.5);
+      txC('✓',x+6,y+2,5,C0.tg,C0.black);
+    }
+  });
+}
+function isRec(item){const c=BEATS[curNPC.dom];return item.el===c||item.el===GENS[c];}
+function getRecElements(){
+  if(!curNPC) return [];
+  const c=BEATS[curNPC.dom];
+  return [c,GENS[c]];
+}
+
+// ══════════════════════════════════════════════════════
+//  NPC 精灵（参考图风格：动物精灵 + 法师）
+// ══════════════════════════════════════════════════════
+
+// 玩家角色（法师，在柜台后）
+function drawWizard(){
+  const x=LW-48, y=60;
+  // 斗篷主体
+  p(x+4, y+6,  14,18,C0.Wa_d||'#1a2a50');
+  p(x+5, y+6,  12,16,'#2a3d70');
+  p(x+6, y+7,  10,14,'#3a4e80');
+  // 兜帽
+  p(x+4, y+1,  14,8, '#2a3d70');
+  p(x+5, y+0,  12,8, '#3a4e80');
+  p(x+6, y+1,  10,6, '#4a5e90');
+  // 脸（黑色圆脸，参考图风格）
+  p(x+6, y+2,  10,7, C0.black);
+  p(x+7, y+3,  8, 5, C0.black);
+  // 眼睛（两个白点）
+  p(x+8, y+4,  2,2,  C0.white);
+  p(x+12,y+4,  2,2,  C0.white);
+  // 手持物品（小球发光）
+  p(x+11,y+16, 4,4, C0.E_c);
+  p(x+12,y+17, 2,2, C0.E_l);
+  pA(x+10,y+15,6,6,C0.E_c,0.2);
+  // 衣领
+  p(x+7, y+12, 8,2, '#5a6ea0');
+  // 斗篷阴影
+  p(x+4, y+20, 14,4, '#1a2a50');
+}
+
+// 动物NPC精灵（按元素不同形态，参考图是狐狸）
+function drawAnimalNPC(lx,ly,el,happy,anim){
+  const ec=EL_C[el];
+  const bob=Math.floor(anim/10)%2;
+  const y=ly+bob;
+  const x=~~lx;
+
+  switch(el){
+    case 'fire': drawFox(x,y,ec,happy,anim); break;
+    case 'water':drawFish(x,y,ec,happy,anim); break;
+    case 'wood': drawDeer(x,y,ec,happy,anim); break;
+    case 'earth':drawTortoise(x,y,ec,happy,anim); break;
+    case 'metal':drawOwl(x,y,ec,happy,anim); break;
+  }
+}
+
+// 火狐（参考图主角）
+function drawFox(x,y,ec,happy,anim){
+  const run=Math.floor(anim/8)%2;
+  // 尾巴（大，有火焰效果）
+  p(x-4,y+4, 8,6, ec.d);
+  p(x-3,y+3, 6,5, ec.c);
+  p(x-2,y+3, 4,4, ec.l);
+  // 火焰尾巴尖
+  p(x-5,y+2, 4,4, C0.F_c);
+  p(x-4,y+1, 3,3, C0.F_l);
+  p(x-4,y,   2,2, '#ffe060');
+  pA(x-5,y,  6,6, C0.F_l,0.3);
+
+  // 身体
+  p(x+2,y+5, 12,7, ec.d);
+  p(x+3,y+4, 10,7, ec.c);
+  p(x+4,y+5, 8, 5, ec.l);
+  // 肚子（白）
+  p(x+6,y+6, 5,4, '#f8e8d0');
+
+  // 腿（跑步动画）
+  if(run){
+    p(x+4, y+11,2,4,ec.d); p(x+9,y+11,2,3,ec.d);
+    p(x+6, y+12,2,3,ec.d); p(x+11,y+10,2,4,ec.d);
+  } else {
+    p(x+4, y+11,2,4,ec.d); p(x+8,y+11,2,4,ec.d);
+    p(x+11,y+11,2,4,ec.d); p(x+6,y+12,2,3,ec.d);
+  }
+  // 爪
+  p(x+4, y+14,3,1,'#c04020'); p(x+9,y+14,3,1,'#c04020');
+  p(x+11,y+13,3,1,'#c04020'); p(x+6,y+14,3,1,'#c04020');
+
+  // 头
+  p(x+7,y+0, 9,7, ec.c);
+  p(x+8,y+1, 7,5, ec.l);
+  // 耳
+  p(x+7, y-3,3,4, ec.c);
+  p(x+14,y-3,3,4, ec.c);
+  p(x+8, y-2,1,2, ec.l);
+  p(x+15,y-2,1,2, ec.l);
+  // 耳内火
+  p(x+7, y-2,2,2, C0.F_c);
+  p(x+14,y-2,2,2, C0.F_c);
+  // 脸
+  p(x+9, y+1,2,2,C0.black); // 左眼
+  p(x+13,y+1,2,2,C0.black); // 右眼
+  if(happy){
+    p(x+9, y+1,2,1,C0.black); // 眯眼
+    p(x+13,y+1,2,1,C0.black);
+    p(x+10,y+4,4,1,C0.black); // 笑口
+    p(x+10,y+3,1,2,C0.black); p(x+13,y+3,1,2,C0.black);
+  } else {
+    p(x+9, y+1,2,2,C0.black);
+    p(x+13,y+1,2,2,C0.black);
+    p(x+10,y+2,1,1,'#ffffff80'); // 眼白高光
+    p(x+14,y+2,1,1,'#ffffff80');
+  }
+  // 鼻
+  p(x+11,y+3,2,1,'#e06050');
+  // 胡须
+  p(x+6, y+4,4,1,C0.white); p(x+14,y+4,4,1,C0.white);
+  p(x+7, y+5,3,1,C0.white); p(x+14,y+5,3,1,C0.white);
+
+  // 火焰粒子（情绪特效）
+  if(!happy&&tick%8<4){
+    pA(x+~~(Math.random()*16),y+~~(Math.random()*8),2,2,C0.F_l,0.7);
+  }
+}
+
+function drawFish(x,y,ec,happy,anim){
+  const wave=Math.floor(anim/6)%4;
+  // 尾鳍
+  const tailX=[x-4,x-3,x-2,x-3][wave];
+  p(tailX,y+4, 6,5, ec.d);
+  p(tailX+1,y+5,4,3,ec.c);
+  // 身体（水滴形）
+  p(x+2,y+2, 14,8, ec.d);
+  p(x+3,y+1, 12,9, ec.c);
+  p(x+4,y+2, 10,7, ec.l);
+  p(x+5,y+3, 6,5,'#90d0ff');
+  // 鳍
+  p(x+6, y-1,5,3,ec.d); // 背鳍
+  p(x+7, y,  3,2,ec.c);
+  p(x+8, y+8,4,3,ec.d); // 腹鳍
+  // 眼
+  p(x+14,y+3,3,3,C0.white);
+  p(x+15,y+4,2,2,C0.black);
+  if(happy){p(x+15,y+4,2,1,C0.black);}
+  p(x+15,y+3,1,1,'#ffffff80');
+  // 水花（情绪特效）
+  if(!happy&&tick%10<5){
+    pA(x+~~(Math.random()*16),y+~~(Math.random()*10)-2,2,2,ec.l,0.6);
+  }
+}
+
+function drawDeer(x,y,ec,happy,anim){
+  const bob2=Math.floor(anim/12)%2;
+  // 身体
+  p(x+2,y+5, 14,8,ec.d);
+  p(x+3,y+4, 12,9,ec.c);
+  p(x+4,y+5, 10,7,ec.l);
+  // 腿
+  p(x+4,y+12,2,5,ec.d); p(x+8,y+12,2,5,ec.d);
+  p(x+11,y+12,2,5,ec.d); p(x+14,y+12+(bob2?1:0),2,4,ec.d);
+  // 头颈
+  p(x+10,y+1,6,6,ec.c);
+  p(x+11,y+0,4,6,ec.l);
+  // 鹿角
+  p(x+11,y-5,1,6,ec.d); p(x+13,y-5,1,6,ec.d);
+  p(x+9, y-4,3,1,ec.d); p(x+14,y-4,3,1,ec.d);
+  p(x+9, y-3,1,2,ec.d); p(x+16,y-3,1,2,ec.d);
+  // 叶子装饰
+  p(x+10,y-4,2,2,C0.W_c); p(x+12,y-5,2,2,C0.W_c);
+  // 眼
+  p(x+14,y+2,2,2,C0.black);
+  if(happy){p(x+13,y+2,4,1,C0.black);p(x+12,y+4,5,1,C0.black);}
+  else {p(x+14,y+2,2,2,C0.black);p(x+14,y+1,1,1,'#ffffff80');}
+  // 纹路
+  p(x+5,y+6,3,1,ec.d); p(x+9,y+8,4,1,ec.d);
+}
+
+function drawTortoise(x,y,ec,happy,anim){
+  // 龟壳
+  p(x+2,y+3, 16,9,ec.d);
+  p(x+3,y+2, 14,10,ec.c);
+  p(x+4,y+3, 12,8,ec.l);
+  // 壳纹
+  p(x+7,y+4,2,6,ec.d); p(x+12,y+4,2,6,ec.d);
+  p(x+4,y+7,12,2,ec.d);
+  // 头
+  p(x+14,y+4,5,4,ec.c);
+  p(x+15,y+3,3,4,ec.l);
+  // 眼（缓慢）
+  p(x+17,y+4,2,2,C0.black);
+  if(happy){p(x+16,y+5,3,1,C0.black);}
+  else{p(x+17,y+4,1,2,C0.black);}
+  // 腿
+  p(x+3, y+10,3,4,ec.d); p(x+14,y+10,3,4,ec.d);
+  p(x+6, y+11,3,4,ec.d); p(x+11,y+11,3,4,ec.d);
+  // 尾
+  p(x+1, y+8, 3,2,ec.d);
+}
+
+function drawOwl(x,y,ec,happy,anim){
+  const blink=anim%60<4;
+  // 翅膀
+  p(x+1,y+5, 5,9,ec.d);
+  p(x+2,y+4, 4,9,ec.c);
+  p(x+14,y+5,5,9,ec.d);
+  p(x+14,y+4,4,9,ec.c);
+  // 身体
+  p(x+4,y+3, 12,12,ec.d);
+  p(x+5,y+2, 10,13,ec.c);
+  p(x+6,y+3, 8,11,ec.l);
+  // 肚子花纹
+  p(x+7,y+6, 6,6,'#d0c8b8');
+  p(x+8,y+7, 4,4,'#e0d8c8');
+  // 头
+  p(x+5,y+0, 10,5,ec.c);
+  p(x+6,y-1, 8,5,ec.l);
+  // 耳羽
+  p(x+5,y-3,3,4,ec.d); p(x+12,y-3,3,4,ec.d);
+  p(x+6,y-2,1,2,ec.l); p(x+13,y-2,1,2,ec.l);
+  // 眼（大圆眼）
+  p(x+6,y+0, 4,4,'#f0f0e0');
+  p(x+10,y+0,4,4,'#f0f0e0');
+  if(!blink){
+    p(x+7,y+1, 2,2,C0.black); p(x+11,y+1,2,2,C0.black);
+    p(x+7,y+1, 1,1,'#ffffff80'); p(x+11,y+1,1,1,'#ffffff80');
+  } else {
+    p(x+6,y+1,4,2,ec.c); p(x+10,y+1,4,2,ec.c); // 闭眼
+  }
+  if(happy){p(x+8,y+4,4,1,C0.black); p(x+8,y+3,1,2,C0.black); p(x+11,y+3,1,2,C0.black);}
+  // 喙
+  p(x+9,y+3, 2,2,'#e0a030');
+  // 爪
+  p(x+6,y+14,2,3,ec.d); p(x+12,y+14,2,3,ec.d);
+  p(x+5,y+16,4,1,ec.d); p(x+11,y+16,4,1,ec.d);
+  // 银羽高光
+  for(let i=0;i<3;i++) pA(x+6+i*2,y+8+i,1,1,ec.l,0.6);
+}
+
+// ══════════════════════════════════════════════════════
+//  感叹号气泡（参考图左上角有"!"）
+// ══════════════════════════════════════════════════════
+function drawExclaim(x,y){
+  if(state!=='present'&&state!=='balancing') return;
+  p(x,   y,   10,12,C0.white);
+  p(x+1, y+1, 8, 10,C0.white);
+  outline(x,y,10,12,C0.black,1);
+  // !符号
+  p(x+4,y+2, 2,5,C0.tr);
+  p(x+4,y+8, 2,2,C0.tr);
+  // 小三角指向NPC
+  p(x+1, y+12,4,2,C0.white);
+  p(x+2, y+14,2,1,C0.white);
+  p(x+1, y+11,4,1,C0.black);
+  p(x+2, y+13,2,1,C0.black);
+}
+
+// ══════════════════════════════════════════════════════
+//  对话框（像素风，底部横幅式）
+// ══════════════════════════════════════════════════════
+function drawDialog(){
+  if(!curNPC||dialogAlpha<=0) return;
+  ctx.globalAlpha=dialogAlpha;
+
+  // 对话框（动态高度，避免台词截断）
+  const bx=8,bw=LW-16;
+  const name=curNPC.name+'·'+curNPC.title;
+  const textX=bx+24, textW=Math.max(44,bw-28);
+  const lines=wrapTextLines(dialogLine,textW,3);
+  const lineH=tLH(3);
+  const textH=Math.max(lineH,lines.length*lineH);
+  const bh=Math.min(68,Math.max(38,18+textH));
+  // balancing阶段优先保证桌面物品可见，不因能量条而把对话框顶到中部
+  const avoidEnergy=energyVisible&&state!=='balancing';
+  const bottomLimit=avoidEnergy?(LH-56):(LH-6);
+  const by=clamp(bottomLimit-bh,64,92);
+
+  p(bx,   by,   bw,   bh,   C0.ui_dark);
+  p(bx+1, by+1, bw-2, bh-2, C0.ui_mid);
+  outline(bx,by,bw,bh,C0.border_gold,1);
+  // 内框线
+  outline(bx+2,by+2,bw-4,bh-4,C0.ui_border,1);
+  // 名字标签（左角）
+  const nameW=clamp(Math.ceil(tW(name,3))+8,52,bw-8);
+  p(bx+2, by+2, nameW, 10, C0.ui_light);
+  outline(bx+2,by+2,nameW,10,C0.border,1);
+  tx(name, bx+5, by+3, 3, C0.ty,'left',C0.black);
+  // 台词
+  drawDialogTextLines(lines, textX, by+13, 3);
+
+  // NPC头像小框（左侧）
+  p(bx+2, by+12, 20,20, C0.bg_wall3);
+  outline(bx+2,by+12,20,20,C0.border,1);
+  drawAnimalNPC(bx+2,by+11,curNPC.dom,balanceDone,0);
+  regUI('dialog',bx,by,bw,bh,'#ff9d66');
+
+  ctx.globalAlpha=1;
+}
+
+function drawDialogTextLines(lines,x,y,sz){
+  ctx.font=`bold ${fontPx(sz)}px "Courier New",monospace`;
+  ctx.textBaseline='top'; ctx.textAlign='left';
+  const lineH=tLH(sz);
+  lines.forEach((line,i)=>{
+    const ly=y+i*lineH;
+    ctx.fillStyle=C0.black; ctx.fillText(line,(x+0.5)*SC,(ly+0.5)*SC);
+    ctx.fillStyle=C0.tw;    ctx.fillText(line,x*SC,ly*SC);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  柜台摆放区
+// ══════════════════════════════════════════════════════
+// TABLE布局由 syncLayout() 动态计算
+
+function drawTableItems(){
+  if(tableItems.length===0&&state==='balancing'){
+    if(tick%24<12){
+      outline(TABLE_X,TABLE_Y,TABLE_W,TABLE_H,C0.ty,1);
+      txC('点击道具放置',TABLE_X+TABLE_W/2,TABLE_Y+3,3,C0.ty,C0.black);
+    }
+    return;
+  }
+  tableItems.forEach((t,i)=>{
+    const ec=EL_C[t.item.el];
+    const tx2=TABLE_X+4+i*36;
+    const ty2=TABLE_Y+1;
+    // 底座
+    p(tx2,  ty2,  32,10,C0.ui_dark);
+    outline(tx2,ty2,32,10,ec.c,1);
+    pA(tx2+1,ty2+1,30,8,ec.c,0.1);
+    // 道具
+    drawItemIcon(t.item.el,tx2+10,ty2+0,10);
+    // 名字
+    txC(t.item.name,tx2+16,ty2+10,2.8,ec.c,C0.black);
+    // 撤回按钮（右上角红×）
+    p(tx2+26,ty2-4,8,7,C0.tr);
+    outline(tx2+26,ty2-4,8,7,'#801010',1);
+    txC('X',tx2+30,ty2-3,3,C0.white,C0.black);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  五行能量条（参考图：底部横排，粗边框彩色条）
+// ══════════════════════════════════════════════════════
+function drawEnergyBars(){
+  if(!energyVisible) return;
+  // 参考图：底部一排5个能量条，每条宽约30px
+  const baseX=8, baseY=LH-52, barW=28, barH=36, gap=4;
+  const totalW=(barW+gap)*5-gap;
+  regUI('energy',baseX-4,baseY-4,totalW+8,barH+20,'#66b3ff');
+
+  // 大背景框
+  p(baseX-4,  baseY-4,  totalW+8,barH+20,C0.ui_dark);
+  outline(baseX-4,baseY-4,totalW+8,barH+20,C0.border_gold,2);
+  p(baseX-3,  baseY-3,  totalW+6,barH+18,C0.ui_mid);
+
+  const yr=YEARS[yearIdx];
+  ELS.forEach((el,i)=>{
+    const ec=EL_C[el];
+    const val=Math.min(100,Math.max(0,Math.round(dispEnergy[el]||0)));
+    const bx=baseX+i*(barW+gap);
+    const by=baseY;
+
+    // 图标（上方）
+    drawItemIcon(el,bx+8,by-14,12);
+
+    // 条框
+    p(bx,   by,   barW,barH,C0.ui_dark);
+    outline(bx,by,barW,barH,ec.c,2);
+    p(bx+2, by+2, barW-4,barH-4,ec.bg||C0.bg_floor2);
+
+    // 填充
+    const fillH=Math.round((barH-4)*val/100);
+    if(fillH>0){
+      p(bx+2, by+barH-2-fillH, barW-4,fillH, ec.d);
+      p(bx+3, by+barH-2-fillH, barW-6,fillH, ec.c);
+      if(fillH>2) p(bx+3,by+barH-2-fillH,barW-8,2,ec.l);
+      // 流年加成闪烁
+      if(yr.boost.includes(el)&&tick%20<10){
+        pA(bx+2,by+barH-2-fillH,barW-4,2,C0.ty,0.8);
+      }
+      // 过旺警告
+      if(val>75&&tick%14<7){
+        pA(bx+2,by+barH-2-fillH,barW-4,fillH,'#ffffff',0.15);
+      }
+    }
+
+    // 标签（下方）
+    txC(ec.n,bx+barW/2,by+barH+2,3,ec.c,C0.black);
+    txC(val+'%',bx+barW/2,by+barH+8,2.5,C0.tw,C0.black);
+  });
+
+  // 平衡状态
+  const bal=getBalance();
+  const bc=bal.balanced?C0.tg:EL_C[bal.highest].c;
+  const msg=bal.balanced?'✦ 五行平衡 ✦':EL_C[bal.highest].n+'气旺';
+  txC(msg,baseX+totalW/2,baseY-20,3.5,bc,C0.black);
+
+  // [E]关闭
+  txR('[E]关',baseX+totalW+2,baseY-4,2.8,C0.tw,C0.black);
+}
+
+// ══════════════════════════════════════════════════════
+//  按钮（像素风厚按钮）
+// ══════════════════════════════════════════════════════
+// BTNS位置由 syncLayout() 动态计算
+function drawBtn(b){
+  const hov=inB(b);
+  const pulse=hov?0.16+0.08*Math.sin(tick*0.2):0;
+  // 像素厚按钮：有立体感
+  p(b.x+2, b.y+2, b.w,b.h,C0.gold1);        // 底部阴影
+  p(b.x,   b.y,   b.w,b.h,hov?C0.gold3:C0.gold2);  // 主体
+  p(b.x,   b.y,   b.w,2,  hov?C0.gold4:C0.gold3);  // 高光顶
+  p(b.x,   b.y,   2,  b.h,hov?C0.gold4:C0.gold3);  // 高光左
+  p(b.x,   b.y+b.h-2,b.w,2,C0.gold1);        // 暗底
+  if(hov) pA(b.x+1,b.y+1,b.w-2,b.h-3,C0.ty,pulse);
+  outline(b.x,b.y,b.w,b.h,'#3a2008',1);
+  txC(b.label,b.x+b.w/2,b.y+b.h/2-2,3,hov?C0.white:C0.tw,C0.black);
+  regUI('btn:'+b.label,b.x,b.y,b.w+2,b.h+2,'#f0d060');
+}
+function inB(b){return mouse.x>=b.x&&mouse.x<=b.x+b.w&&mouse.y>=b.y&&mouse.y<=b.y+b.h;}
+
+// ══════════════════════════════════════════════════════
+//  HUD
+// ══════════════════════════════════════════════════════
+function drawHUD(){
+  const sx=3, sy=3, sw=LW-6, sh=10;
+  // 参考图顶部有大标题
+  // 顶部黑条
+  p(sx,sy,sw,sh,C0.ui_dark);
+  outline(sx,sy,sw,sh,C0.ui_border,1);
+  // 金币
+  p(6,5,5,5,C0.E_c); p(7,6,3,3,C0.E_l); p(7,6,1,1,C0.ty);
+  const coinTxt=String(coins);
+  tx(coinTxt,13,5,3,C0.ty,'left',C0.black);
+  // 流年+天数
+  const rightTxt=YEARS[yearIdx].name+' 第'+day+'天';
+  txR(rightTxt,LW-5,5,3,C0.ty,C0.black);
+  // 标题（可降级，避免与左右信息重叠）
+  const leftEdge=13+tW(coinTxt,3)+2;
+  const rightEdge=(LW-5)-tW(rightTxt,3)-2;
+  const gap=rightEdge-leftEdge;
+  let title='Ganzhi Equilibrium', titleSz=3.5;
+  if(gap<tW(title,titleSz)+4){
+    title='Ganzhi'; titleSz=3;
+  }
+  if(gap>tW(title,titleSz)+2){
+    txC(title,LW/2,5,titleSz,C0.white,C0.black);
+  }
+  regUI('hud',sx,sy,sw,sh,'#8fd6ff');
+}
+
+function drawAssistPanel(){
+  if(!curNPC||(state!=='present'&&state!=='balancing')) return;
+  if(ruleOpen) return;
+  const rec=getRecElements();
+  const recText=rec.length===2?('建议：'+EL_C[rec[0]].n+' / '+EL_C[rec[1]].n):'建议：--';
+  const titleSz=3.2,bodySz=2.9;
+  const lineH=tLH(bodySz);
+  const rows=['[1-0]放置','[Back]撤回','[E]显示五行',recText];
+  const contentW=Math.max(Math.ceil(tW('操作提示',titleSz)),...rows.map(r=>Math.ceil(tW(r,bodySz))));
+  const bw=clamp(contentW+10,88,106), bh=12+rows.length*lineH+4;
+  const bx=LW-bw-4, by=14;
+  p(bx,by,bw,bh,C0.ui_dark);
+  p(bx+1,by+1,bw-2,bh-2,C0.ui_mid);
+  outline(bx,by,bw,bh,C0.border,1);
+  tx('操作提示',bx+4,by+3,titleSz,C0.ty,'left',C0.black);
+  tx('[1-0]放置',bx+4,by+12,bodySz,C0.tw,'left',C0.black);
+  tx('[Back]撤回',bx+4,by+12+lineH,bodySz,C0.tw,'left',C0.black);
+  tx('[E]显示五行',bx+4,by+12+lineH*2,bodySz,C0.tw,'left',C0.black);
+  if(rec.length===2){
+    tx(recText,bx+4,by+12+lineH*3,bodySz,C0.tg,'left',C0.black);
+  }else{
+    tx(recText,bx+4,by+12+lineH*3,bodySz,C0.tw,'left',C0.black);
+  }
+  regUI('assist',bx,by,bw,bh,'#88d66a');
+}
+
+function drawRulePanel(){
+  if(!ruleOpen||state==='title') return;
+  const title='五行生克原理';
+  const bodySz=2.7,titleSz=3.1,lineH=tLH(bodySz);
+  const rowsRaw=[
+    '相生：木生火，火生土，土生金，金生水，水生木。',
+    '相克：木克土，土克水，水克火，火克金，金克木。',
+    '对症：先看最旺元素，再选克它的五行。',
+    '[R] 或点击右上角规则按钮关闭',
+  ];
+  const bodyMaxW=LW-20;
+  const rows=[];
+  rowsRaw.forEach(r=>rows.push(...wrapTextLines(r,bodyMaxW,bodySz)));
+  const contentW=Math.max(
+    Math.ceil(tW(title,titleSz)),
+    ...rows.map(r=>Math.ceil(tW(r,bodySz)))
+  );
+  const bw=clamp(contentW+10,132,LW-8), bh=14+rows.length*lineH+5;
+  const bx=LW-bw-4,by=28;
+  p(bx,by,bw,bh,C0.ui_dark);
+  p(bx+1,by+1,bw-2,bh-2,C0.ui_mid);
+  outline(bx,by,bw,bh,C0.border_gold,1);
+  p(bx+2,by+2,bw-4,9,C0.ui_light);
+  outline(bx+2,by+2,bw-4,9,C0.ui_border,1);
+  tx(title,bx+5,by+3,titleSz,C0.ty,'left',C0.black);
+  rows.forEach((line,i)=>{
+    const y=by+13+lineH*i;
+    let color=C0.tw;
+    if(line.startsWith('对症：')) color=C0.tg;
+    if(line.startsWith('[R]')) color=C0.ty;
+    tx(line,bx+4,y,bodySz,color,'left',C0.black);
+  });
+  regUI('rulePanel',bx,by,bw,bh,'#ffd280');
+}
+
+// ══════════════════════════════════════════════════════
+//  标题画面（像参考图的展示风格）
+// ══════════════════════════════════════════════════════
+function drawTitle(){
+  pA(0,0,LW,LH,C0.black,0.8);
+  const bx=20,by=18,bw=200,bh=124;
+  p(bx,   by,   bw,   bh,   C0.ui_dark);
+  p(bx+2, by+2, bw-4, bh-4, C0.ui_mid);
+  // 多层边框（像参考图的精致边框）
+  outline(bx,by,bw,bh,C0.border_gold,2);
+  outline(bx+3,by+3,bw-6,bh-6,C0.border,1);
+  // 角落装饰
+  drawDiamond(bx+2,by+2,C0.border_gold);
+  drawDiamond(bx+bw-7,by+2,C0.border_gold);
+  drawDiamond(bx+2,by+bh-7,C0.border_gold);
+  drawDiamond(bx+bw-7,by+bh-7,C0.border_gold);
+
+  // 标题区深色
+  p(bx+4,by+4,bw-8,18,C0.bg_wall3);
+  // 大标题
+  txC('干支平衡屋',LW/2,by+6,5.5,C0.ty,C0.black);
+  txC('Ganzhi Equilibrium Shop',LW/2,by+18,3,C0.tw,C0.black);
+  // 分割线
+  p(bx+8,by+26,bw-16,1,C0.border_gold);
+  p(bx+8,by+27,bw-16,1,C0.gold1);
+
+  // 简介（参考图风格简洁排版）
+  const lines=[
+    ['你是一位时空调解师',C0.tw],
+    ['运用五行相克之道',C0.tw],
+    ['调理精灵们的失衡能量',C0.tw],
+    ['',C0.tw],
+    ['点击道具  放置柜台',C0.ty],
+    ['达成五行平衡  获得金币',C0.ty],
+  ];
+  lines.forEach(([l,c],i)=>txC(l,LW/2,by+30+i*10,3,c,C0.black));
+
+  // 展示小动物（标题页）
+  drawFox(bx+12, by+72, EL_C.fire, false, tick);
+  drawOwl(bx+bw-38, by+74, EL_C.metal, false, tick);
+
+  drawBtn(BTNS.start);
+  regUI('titlePanel',bx,by,bw,bh,'#c8a0ff');
+}
+
+// ══════════════════════════════════════════════════════
+//  粒子 & 浮动消息
+// ══════════════════════════════════════════════════════
+function burst(lx,ly,c,n){
+  for(let i=0;i<(n||8);i++){
+    const a=Math.PI*2*i/n+Math.random()*0.4;
+    const sp=20+Math.random()*30;
+    particles.push({x:lx,y:ly,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-15,
+      c,life:0.8+Math.random()*0.4,ml:0.8+Math.random()*0.4});
+  }
+}
+function tickPar(dt){
+  particles=particles.filter(p2=>{
+    p2.x+=p2.vx*dt; p2.y+=p2.vy*dt; p2.vy+=50*dt; p2.life-=dt;
+    if(p2.life<=0)return false;
+    const a=p2.life/p2.ml;
+    pA(~~p2.x,~~p2.y,2,2,p2.c,a*0.9);
+    return true;
+  });
+}
+function showF(msg,c){floats.push({msg,c:c||C0.ty,x:LW/2,y:60,life:2});}
+function tickF(dt){
+  floats=floats.filter(f=>{
+    f.y-=15*dt; f.life-=dt;
+    if(f.life<=0)return false;
+    ctx.globalAlpha=Math.min(1,f.life);
+    txC(f.msg,f.x,~~f.y,3.5,f.c,C0.black);
+    ctx.globalAlpha=1; return true;
+  });
+}
+function lerp(a,b,t){return a+(b-a)*t;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+// ══════════════════════════════════════════════════════
+//  工具提示
+// ══════════════════════════════════════════════════════
+function drawTooltip(){
+  if(hovItem===null) return;
+  const item=ITEMS[hovItem];
+  const{x,y}=getItemSlot(hovItem);
+  const title=item.name+'('+EL_C[item.el].n+')';
+  const maxTextW=86;
+  const descSz=3;
+  const lineH=tLH(descSz);
+  const descLines=wrapTextLines(item.desc,maxTextW,descSz);
+  const titleW=Math.ceil(tW(title,3.2));
+  const descW=Math.max(...descLines.map(s=>Math.ceil(tW(s,descSz))));
+  const bw=clamp(Math.max(titleW,descW)+8,54,98);
+  const bh=10+descLines.length*lineH;
+  let bx=x+14;
+  let by=y-bh-2;
+  bx=clamp(bx,2,LW-bw-2);
+  by=clamp(by,14,LH-bh-2);
+  p(bx,by,bw,bh,C0.ui_dark);
+  outline(bx,by,bw,bh,EL_C[item.el].c,1);
+  txC(title,bx+bw/2,by+2,3.2,EL_C[item.el].c,C0.black);
+  descLines.forEach((line,i)=>{
+    txC(line,bx+bw/2,by+9+i*lineH,descSz,C0.tw,C0.black);
+  });
+  regUI('tooltip',bx,by,bw,bh,'#9ef0ff');
+}
+
+// ══════════════════════════════════════════════════════
+//  游戏逻辑
+// ══════════════════════════════════════════════════════
+function getBalance(){
+  const vals=ELS.map(el=>curEnergy[el]||0);
+  const avg=vals.reduce((a,b)=>a+b,0)/5;
+  const maxDev=Math.max(...vals.map(v=>Math.abs(v-avg)));
+  const highest=ELS.reduce((a,b)=>(curEnergy[a]||0)>(curEnergy[b]||0)?a:b);
+  return{balanced:maxDev<24,highest};
+}
+function applyItem(item){
+  const e=item.el,t=BEATS[e],g=GENS[e];
+  curEnergy[e]=clamp((curEnergy[e]||0)+14,0,100);
+  curEnergy[t]=clamp((curEnergy[t]||0)-18,0,100);
+  curEnergy[g]=clamp((curEnergy[g]||0)+5,0,100);
+}
+function revertItem(item){
+  const e=item.el,t=BEATS[e],g=GENS[e];
+  curEnergy[e]=clamp((curEnergy[e]||0)-14,0,100);
+  curEnergy[t]=clamp((curEnergy[t]||0)+18,0,100);
+  curEnergy[g]=clamp((curEnergy[g]||0)-5,0,100);
+}
+function nextClient(){
+  if(state!=='idle'&&state!=='title')return;
+  if(npcPool.length===0)npcPool=[...NPCS].sort(()=>Math.random()-0.5);
+  const npc={...npcPool.shift()};
+  npc._line=npc.lines[~~(Math.random()*npc.lines.length)];
+  curNPC=npc; curEnergy={...npc.energy};
+  YEARS[yearIdx].boost.forEach(el=>{curEnergy[el]=clamp((curEnergy[el]||0)+12,0,100);});
+  Object.assign(dispEnergy,curEnergy);
+  tableItems=[];energyVisible=false;balanceDone=false;
+  npcMood=0;ruleOpen=false;
+  npcX=-30;dialogAlpha=0;dialogLine=npc._line;resultTimer=0;
+  state='arriving';
+}
+function checkBal(){
+  if(state!=='balancing')return;
+  if(getBalance().balanced){
+    balanceDone=true;npcMood=2;state='success';resultTimer=0;
+    const rew=15+tableItems.length*5;coins+=rew;
+    showF('+'+rew+'金币 五行平衡！',C0.ty);
+    burst(~~npcX+10,65,C0.ty,16);
+    burst(~~npcX+10,65,EL_C[curNPC.dom].c,10);
+    dialogLine='谢谢！感觉好多了！';
+  }
+}
+function getMaxDev(){
+  const vals=ELS.map(el=>curEnergy[el]||0);
+  const avg=vals.reduce((a,b)=>a+b,0)/5;
+  return Math.max(...vals.map(v=>Math.abs(v-avg)));
+}
+function reactToPlacement(item,beforeHighest,beforeDev){
+  const afterDev=getMaxDev();
+  const onTarget=item.el===BEATS[beforeHighest];
+  if(onTarget){
+    showF('对症：'+EL_C[item.el].n+'克'+EL_C[beforeHighest].n,C0.tg);
+    burst(~~npcX+10,60,C0.tg,5);
+  }
+  if(afterDev<beforeDev-0.8){
+    npcMood=Math.min(2,npcMood+1);
+    if(!balanceDone){
+      dialogLine=onTarget?'就是这味道，顺多了。':'嗯，气机在回正。';
+    }
+  }else if(afterDev>beforeDev+0.8){
+    npcMood=Math.max(-2,npcMood-1);
+    if(!balanceDone){
+      dialogLine=onTarget?'方向对了，但火候还差一点。':'不太对，我体内更乱了。';
+    }
+  }else if(!balanceDone){
+    dialogLine=onTarget?'有点见效，再试一手。':'变化不大，再调一件。';
+  }
+}
+
+function placeItemByIndex(i){
+  if(state!=='balancing') return;
+  const item=ITEMS[i];
+  if(!item) return;
+  if(tableItems.length>=3){showF('最多3件',C0.tr);return;}
+  if(tableItems.some(t=>t.item.id===item.id)){showF('已使用',C0.tr);return;}
+  const beforeHighest=getBalance().highest;
+  const beforeDev=getMaxDev();
+  tableItems.push({item});applyItem(item);
+  reactToPlacement(item,beforeHighest,beforeDev);
+  const pos=getItemSlot(i);
+  burst(pos.x+6,pos.y+6,EL_C[item.el].c,6);
+  showF('+'+item.name,EL_C[item.el].c);
+  checkBal();
+}
+
+function undoTableItem(i){
+  if(state!=='balancing') return;
+  const t=tableItems[i];
+  if(!t) return;
+  const tx2=TABLE_X+4+i*36,ty2=TABLE_Y+1;
+  revertItem(t.item);tableItems.splice(i,1);
+  showF('撤回 '+t.item.name,C0.E_l);
+  burst(tx2+16,ty2+5,EL_C[t.item.el].c,4);
+}
+
+// ══════════════════════════════════════════════════════
+//  输入
+// ══════════════════════════════════════════════════════
+C.addEventListener('mousemove',e=>{
+  if(!canPlayNow()) return;
+  const l=toL(e); mouse.x=l.x; mouse.y=l.y;
+  hovItem=null;
+  if(state==='balancing'){
+    ITEMS.forEach((_,i)=>{
+      const{x,y}=getItemSlot(i);
+      if(mouse.x>=x-1&&mouse.x<=x+13&&mouse.y>=y-1&&mouse.y<=y+13)hovItem=i;
+    });
+  }
+});
+
+function handlePointerDown(x,y){
+  if(!canPlayNow()) return;
+  if(state!=='title'&&inB(BTNS.rule)){ruleOpen=!ruleOpen;return;}
+  if(state==='title'){if(inB(BTNS.start)){state='idle';nextClient();}return;}
+  if(state==='idle'){if(inB(BTNS.next))nextClient();return;}
+  if(state==='present'){
+    if(inB(BTNS.diag)){energyVisible=true;state='balancing';}
+    return;
+  }
+  if(state==='balancing'){
+    // 撤回按钮
+    let h=false;
+    tableItems.forEach((t,i)=>{
+      const tx2=TABLE_X+4+i*36;const ty2=TABLE_Y+1;
+      if(x>=tx2+26&&x<=tx2+34&&y>=ty2-4&&y<=ty2+3){
+        undoTableItem(i);
+        h=true;
+      }
+    });
+    if(h)return;
+    // 放置道具
+    ITEMS.forEach((item,i)=>{
+      const{x:ix,y:iy}=getItemSlot(i);
+      if(x>=ix-1&&x<=ix+13&&y>=iy-1&&y<=iy+13){
+        placeItemByIndex(i);
+      }
+    });
+  }
+}
+
+C.addEventListener('click',e=>{
+  const l=toL(e);
+  handlePointerDown(l.x,l.y);
+});
+
+function toLTouch(e){
+  const t=(e.touches&&e.touches[0])||(e.changedTouches&&e.changedTouches[0]);
+  if(!t) return null;
+  const r=C.getBoundingClientRect();
+  return {
+    x:(t.clientX-r.left)*(LW*SC/r.width)/SC,
+    y:(t.clientY-r.top)*(LH*SC/r.height)/SC
+  };
+}
+
+C.addEventListener('touchstart',e=>{
+  const l=toLTouch(e);
+  if(!l) return;
+  if(!canPlayNow()){e.preventDefault();return;}
+  mouse.x=l.x; mouse.y=l.y;
+  e.preventDefault();
+},{passive:false});
+
+C.addEventListener('touchmove',e=>{
+  const l=toLTouch(e);
+  if(!l) return;
+  if(!canPlayNow()){e.preventDefault();return;}
+  mouse.x=l.x; mouse.y=l.y;
+  hovItem=null;
+  if(state==='balancing'){
+    ITEMS.forEach((_,i)=>{
+      const{x,y}=getItemSlot(i);
+      if(mouse.x>=x-1&&mouse.x<=x+13&&mouse.y>=y-1&&mouse.y<=y+13)hovItem=i;
+    });
+  }
+  e.preventDefault();
+},{passive:false});
+
+C.addEventListener('touchend',e=>{
+  const l=toLTouch(e);
+  if(!l) return;
+  if(!canPlayNow()){e.preventDefault();return;}
+  mouse.x=l.x; mouse.y=l.y;
+  handlePointerDown(l.x,l.y);
+  e.preventDefault();
+},{passive:false});
+
+window.addEventListener('contextmenu',e=>{
+  if(state==='balancing'){
+    e.preventDefault();
+    if(tableItems.length>0) undoTableItem(tableItems.length-1);
+  }
+});
+
+window.addEventListener('keydown',e=>{
+  if(e.key==='F2'){
+    uiDebug=!uiDebug;
+    showF(uiDebug?'Debug布局：开':'Debug布局：关',uiDebug?C0.tg:C0.ty);
+    return;
+  }
+  if(e.key==='r'||e.key==='R'){
+    if(state!=='title') ruleOpen=!ruleOpen;
+    return;
+  }
+  if(e.key==='e'||e.key==='E'){
+    energyVisible=!energyVisible;
+    return;
+  }
+  if(e.key==='Enter'||e.key===' '){
+    if(state==='title'){state='idle';nextClient();return;}
+    if(state==='idle'){nextClient();return;}
+    if(state==='present'){energyVisible=true;state='balancing';return;}
+  }
+  if((e.key==='Backspace'||e.key==='Delete')&&state==='balancing'){
+    e.preventDefault();
+    if(tableItems.length>0) undoTableItem(tableItems.length-1);
+    return;
+  }
+  if(state==='balancing'){
+    const map={1:0,2:1,3:2,4:3,5:4,6:5,7:6,8:7,9:8,0:9};
+    if(Object.prototype.hasOwnProperty.call(map,e.key)){
+      placeItemByIndex(map[e.key]);
+      return;
+    }
+    if(e.key==='Escape'){energyVisible=false;}
+  }
+});
+
+// ══════════════════════════════════════════════════════
+//  主循环
+// ══════════════════════════════════════════════════════
+let last=0;
+function loop(ts){
+  const dt=Math.min((ts-last)/1000,0.05);
+  last=ts; tick++; npcAnim++;
+  debugRects=[];
+
+  ctx.fillStyle=C0.black; ctx.fillRect(0,0,LW*SC,LH*SC);
+  if(!canPlayNow()){
+    drawScene();
+    drawRotateHint();
+    drawDebugOverlay();
+    C.style.cursor='default';
+    requestAnimationFrame(loop); return;
+  }
+
+  if(state==='title'){
+    drawScene();
+    drawWideSidebar();
+    drawWizard();
+    drawItems();
+    drawHUD();
+    drawTitle();
+    drawDebugOverlay();
+    requestAnimationFrame(loop); return;
+  }
+
+  drawScene();
+  drawWideSidebar();
+  drawItems();
+
+  // 状态机
+  if(state==='arriving'){
+    npcX=lerp(npcX,78,0.07);
+    if(npcX>76){npcX=78;dialogAlpha=Math.min(1,dialogAlpha+0.08);}
+    if(dialogAlpha>=0.99)state='present';
+  }
+  if(state==='success'){
+    resultTimer+=dt;dialogAlpha=1;
+    if(resultTimer>2.8)state='leaving';
+  }
+  if(state==='leaving'){
+    npcX=lerp(npcX,-32,0.07);
+    dialogAlpha=Math.max(0,dialogAlpha-0.06);
+    if(npcX<-28){
+      state='idle';curNPC=null;energyVisible=false;balanceDone=false;
+      day++;
+      if(day%5===0){yearIdx=(yearIdx+1)%YEARS.length;showF('流年更替:'+YEARS[yearIdx].name,C0.ty);}
+    }
+  }
+
+  ELS.forEach(el=>{dispEnergy[el]=lerp(dispEnergy[el]||0,curEnergy[el]||0,0.1);});
+
+  // 画法师（玩家角色，柜台后）
+  drawWizard();
+  drawAssistPanel();
+
+  // 画NPC动物
+  if(curNPC&&state!=='idle'){
+    drawAnimalNPC(npcX,64,curNPC.dom,balanceDone||npcMood>0,npcAnim);
+    // 感叹号气泡
+    if(state==='present'||state==='balancing'){
+      drawExclaim(~~npcX+4,50);
+    }
+  }
+
+  drawDialog();
+  drawEnergyBars();
+  // 桌面物品层级始终高于对话框，避免被遮挡
+  drawTableItems();
+  tickPar(dt); tickF(dt);
+  drawHUD();
+  drawBtn(BTNS.rule);
+  drawRulePanel();
+
+  if(state==='idle')drawBtn(BTNS.next);
+  if(state==='present')drawBtn(BTNS.diag);
+  if(state==='balancing')drawTooltip();
+
+  // 光标
+  let cur='default';
+  if((state==='idle'&&inB(BTNS.next))||(state==='present'&&inB(BTNS.diag))||
+     (state==='title'&&inB(BTNS.start)))cur='pointer';
+  if(state!=='title'&&inB(BTNS.rule))cur='pointer';
+  if(state==='balancing'&&hovItem!==null)cur='pointer';
+  if(state==='balancing'){
+    tableItems.forEach((_,i)=>{
+      const tx2=TABLE_X+4+i*36,ty2=TABLE_Y+1;
+      if(mouse.x>=tx2+26&&mouse.x<=tx2+34&&mouse.y>=ty2-4&&mouse.y<=ty2+3)cur='pointer';
+    });
+  }
+  drawDebugOverlay();
+  C.style.cursor=cur;
+  requestAnimationFrame(loop);
+}
+
+state='title';
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
