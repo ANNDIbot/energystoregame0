@@ -68,17 +68,16 @@ function canPlayNow(){
   return !isMobileLike()||isLandscapeViewport();
 }
 function syncLayout(){
-  // 道具桌锚定右侧，宽屏时整体右移，保证角色与道具区分离
-  TABLE_X=LW-TABLE_W-8;
+  // 以基础布局为中心，宽屏时仅小幅右移，避免整体过于靠右
+  const dx=Math.max(0,LW-BASE_LW);
+  TABLE_X=112+Math.floor(dx*0.12);
   TABLE_Y=72; TABLE_W=118; TABLE_H=12;
-  // 店主固定在道具桌右侧边缘
-  wizX=clamp(TABLE_X+TABLE_W-18,136,LW-30);
-  // 能量精灵优先在道具桌左侧；若横向空间不够则下移，避免挡货架
-  const shelfEnd=108,npcW=22;
-  const room=TABLE_X-(shelfEnd+2);
-  const noGap=room<(npcW+4);
-  npcY=noGap?82:64;
-  npcTx=clamp(noGap?(shelfEnd+2):(TABLE_X-npcW-6),56,LW-54);
+  // 店主放在道具桌右侧，保证不压住第3个道具位
+  wizX=clamp(TABLE_X+TABLE_W+10,136,LW-30);
+  // 能量精灵贴近道具桌左侧，避开货架区域
+  npcTx=clamp(TABLE_X+14,110,LW-54);
+  // 与店主保持同一水平线
+  npcY=64;
   BTNS.start={x:LW/2-30,y:LH/2+36,w:60,h:12,label:'开始营业'};
   BTNS.next ={x:LW/2-40,y:LH-14,  w:80,h:11,label:'迎接下一位客人'};
   BTNS.diag ={x:LW-50,  y:80,     w:44,h:10,label:'查看五行'};
@@ -262,30 +261,14 @@ let particles=[],floats=[];
 let hovItem=null,tick=0;
 const mouse={x:0,y:0};
 let ruleOpen=false,npcMood=0;
-let uiDebug=false;
-let debugRects=[];
 
 function toL(e){
   const r=C.getBoundingClientRect();
   return{x:(e.clientX-r.left)*(LW*SC/r.width)/SC,
          y:(e.clientY-r.top)*(LH*SC/r.height)/SC};
 }
-function regUI(name,x,y,w,h,c){
-  if(!uiDebug) return;
-  debugRects.push({name,x,y,w,h,c:c||'#5cf0d0'});
-}
-function drawDebugOverlay(){
-  if(!uiDebug) return;
-  // 场景边界与安全区（逻辑坐标）
-  outline(0,0,LW,LH,'#00f0a0',1);
-  outline(3,3,LW-6,LH-6,'#20a0ff',1);
-  debugRects.forEach(r=>{
-    pA(r.x,r.y,r.w,r.h,r.c,0.14);
-    outline(r.x,r.y,r.w,r.h,r.c,1);
-  });
-  pA(4,14,74,8,C0.black,0.6);
-  tx('[F2] DEBUG ON',6,15,2.6,C0.ty,'left',C0.black);
-}
+function regUI(name,x,y,w,h,c){}
+function drawDebugOverlay(){}
 function drawRotateHint(){
   if(canPlayNow()) return;
   pA(0,0,LW,LH,C0.black,0.82);
@@ -563,7 +546,7 @@ function getRecElements(){
 
 // 玩家角色（法师，在柜台后）
 function drawWizard(){
-  const x=wizX, y=60;
+  const x=wizX, y=64;
   // 斗篷主体
   p(x+4, y+6,  14,18,C0.Wa_d||'#1a2a50');
   p(x+5, y+6,  12,16,'#2a3d70');
@@ -588,7 +571,7 @@ function drawWizard(){
   p(x+4, y+20, 14,4, '#1a2a50');
 }
 function getWizardRect(){
-  const x=wizX, y=60;
+  const x=wizX, y=64;
   return {x:x+3,y,w:17,h:24};
 }
 
@@ -1374,11 +1357,6 @@ window.addEventListener('contextmenu',e=>{
 });
 
 window.addEventListener('keydown',e=>{
-  if(e.key==='F2'){
-    uiDebug=!uiDebug;
-    showF(uiDebug?'Debug布局：开':'Debug布局：关',uiDebug?C0.tg:C0.ty);
-    return;
-  }
   if(e.key==='r'||e.key==='R'){
     if(state!=='title') ruleOpen=!ruleOpen;
     return;
@@ -1414,13 +1392,11 @@ let last=0;
 function loop(ts){
   const dt=Math.min((ts-last)/1000,0.05);
   last=ts; tick++; npcAnim++;
-  debugRects=[];
 
   ctx.fillStyle=C0.black; ctx.fillRect(0,0,LW*SC,LH*SC);
   if(!canPlayNow()){
     drawScene();
     drawRotateHint();
-    drawDebugOverlay();
     C.style.cursor='default';
     requestAnimationFrame(loop); return;
   }
@@ -1431,7 +1407,6 @@ function loop(ts){
     drawItems();
     drawHUD();
     drawTitle();
-    drawDebugOverlay();
     requestAnimationFrame(loop); return;
   }
 
@@ -1465,10 +1440,13 @@ function loop(ts){
   drawEnergyBars();
   // 桌面物品层级始终高于对话框，避免被遮挡
   drawTableItems();
+  regUI('table',TABLE_X,TABLE_Y,TABLE_W,TABLE_H,'#e3d06a');
   // 角色层在道具层之上，避免道具遮挡店主/能量精灵
   drawWizard();
+  regUI('wizard',getWizardRect().x,getWizardRect().y,getWizardRect().w,getWizardRect().h,'#9a8dff');
   if(curNPC&&state!=='idle'){
     drawAnimalNPC(npcX,npcY,curNPC.dom,balanceDone||npcMood>0,npcAnim);
+    regUI('spirit',npcX,npcY-3,24,21,'#6ad6ff');
     if(state==='present'||state==='balancing'){
       drawExclaim(~~npcX+4,npcY-14);
     }
@@ -1495,7 +1473,6 @@ function loop(ts){
       if(mouse.x>=tx2+26&&mouse.x<=tx2+34&&mouse.y>=ty2-4&&mouse.y<=ty2+3)cur='pointer';
     });
   }
-  drawDebugOverlay();
   C.style.cursor=cur;
   requestAnimationFrame(loop);
 }
