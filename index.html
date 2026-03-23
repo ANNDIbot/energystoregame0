@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>干支平衡屋 · Ganzhi Equilibrium</title>
+<title>E-E SHOP · Energy Equilibrium</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{
@@ -28,7 +28,7 @@ canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;curso
 <body><canvas id="c"></canvas>
 <script>
 // ═══════════════════════════════════════════════════════
-//  干支平衡屋  ·  像素风  v3  —  参考图风格重制
+//  E-E SHOP  ·  像素风  v3  —  参考图风格重制
 //  逻辑分辨率 240×160，放大 3x = 720×480
 // ═══════════════════════════════════════════════════════
 const SC=3, BASE_LW=240, LH=160;
@@ -551,7 +551,7 @@ function getRecElements(){
 
 // 玩家角色（法师，在柜台后）
 function drawWizard(){
-  const x=LW-48, y=60;
+  const x=clamp(TABLE_X+TABLE_W-28,136,LW-34), y=60;
   // 斗篷主体
   p(x+4, y+6,  14,18,C0.Wa_d||'#1a2a50');
   p(x+5, y+6,  12,16,'#2a3d70');
@@ -978,9 +978,9 @@ function drawHUD(){
   const leftEdge=13+tW(coinTxt,3)+2;
   const rightEdge=(LW-5)-tW(rightTxt,3)-2;
   const gap=rightEdge-leftEdge;
-  let title='Ganzhi Equilibrium', titleSz=3.5;
+  let title='Energy Equilibrium', titleSz=3.5;
   if(gap<tW(title,titleSz)+4){
-    title='Ganzhi'; titleSz=3;
+    title='Energy'; titleSz=3;
   }
   if(gap>tW(title,titleSz)+2){
     txC(title,LW/2,5,titleSz,C0.white,C0.black);
@@ -998,7 +998,7 @@ function drawAssistPanel(){
   const rows=['[1-0]放置','[Back]撤回','[E]显示五行',recText];
   const contentW=Math.max(Math.ceil(tW('操作提示',titleSz)),...rows.map(r=>Math.ceil(tW(r,bodySz))));
   const bw=clamp(contentW+10,88,106), bh=12+rows.length*lineH+4;
-  const bx=LW-bw-4, by=14;
+  const bx=Math.max(6,TABLE_X-bw-6), by=14;
   p(bx,by,bw,bh,C0.ui_dark);
   p(bx+1,by+1,bw-2,bh-2,C0.ui_mid);
   outline(bx,by,bw,bh,C0.border,1);
@@ -1054,7 +1054,8 @@ function drawRulePanel(){
 // ══════════════════════════════════════════════════════
 function drawTitle(){
   pA(0,0,LW,LH,C0.black,0.8);
-  const bx=20,by=18,bw=200,bh=124;
+  const bw=Math.min(200,LW-20),bh=124;
+  const bx=(LW-bw)/2,by=18;
   p(bx,   by,   bw,   bh,   C0.ui_dark);
   p(bx+2, by+2, bw-4, bh-4, C0.ui_mid);
   // 多层边框（像参考图的精致边框）
@@ -1069,8 +1070,8 @@ function drawTitle(){
   // 标题区深色
   p(bx+4,by+4,bw-8,18,C0.bg_wall3);
   // 大标题
-  txC('干支平衡屋',LW/2,by+6,5.5,C0.ty,C0.black);
-  txC('Ganzhi Equilibrium Shop',LW/2,by+18,3,C0.tw,C0.black);
+  txC('E-E SHOP',LW/2,by+6,5.5,C0.ty,C0.black);
+  txC('Energy Equilibrium',LW/2,by+18,3,C0.tw,C0.black);
   // 分割线
   p(bx+8,by+26,bw-16,1,C0.border_gold);
   p(bx+8,by+27,bw-16,1,C0.gold1);
@@ -1227,6 +1228,10 @@ function reactToPlacement(item,beforeHighest,beforeDev){
   }else if(!balanceDone){
     dialogLine=onTarget?'有点见效，再试一手。':'变化不大，再调一件。';
   }
+}
+function npcTargetX(){
+  // 贴近道具桌左侧，避免挡住左侧道具柜
+  return Math.max(112,TABLE_X-16);
 }
 
 function placeItemByIndex(i){
@@ -1421,8 +1426,9 @@ function loop(ts){
 
   // 状态机
   if(state==='arriving'){
-    npcX=lerp(npcX,78,0.07);
-    if(npcX>76){npcX=78;dialogAlpha=Math.min(1,dialogAlpha+0.08);}
+    const tx=npcTargetX();
+    npcX=lerp(npcX,tx,0.07);
+    if(npcX>tx-2){npcX=tx;dialogAlpha=Math.min(1,dialogAlpha+0.08);}
     if(dialogAlpha>=0.99)state='present';
   }
   if(state==='success'){
