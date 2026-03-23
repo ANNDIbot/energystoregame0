@@ -159,6 +159,9 @@ function wrapTextLines(text,maxW,sz){
   });
   return out.length?out:[''];
 }
+function rectOverlap(a,b){
+  return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+}
 
 // ── 调色板（参考图风格）──────────────────────────────
 const C0={
@@ -574,6 +577,10 @@ function drawWizard(){
   p(x+7, y+12, 8,2, '#5a6ea0');
   // 斗篷阴影
   p(x+4, y+20, 14,4, '#1a2a50');
+}
+function getWizardRect(){
+  const x=clamp(TABLE_X+TABLE_W-28,136,LW-34), y=60;
+  return {x:x+3,y,w:17,h:24};
 }
 
 // 动物NPC精灵（按元素不同形态，参考图是狐狸）
@@ -993,23 +1000,22 @@ function drawAssistPanel(){
   if(ruleOpen) return;
   const rec=getRecElements();
   const recText=rec.length===2?('建议：'+EL_C[rec[0]].n+' / '+EL_C[rec[1]].n):'建议：--';
-  const titleSz=3.2,bodySz=2.9;
+  const titleSz=3.1,bodySz=3.0;
   const lineH=tLH(bodySz);
-  const rows=['[1-0]放置','[Back]撤回','[E]显示五行',recText];
-  const contentW=Math.max(Math.ceil(tW('操作提示',titleSz)),...rows.map(r=>Math.ceil(tW(r,bodySz))));
-  const bw=clamp(contentW+10,88,106), bh=12+rows.length*lineH+4;
-  const bx=Math.max(6,TABLE_X-bw-6), by=14;
+  const contentW=Math.max(Math.ceil(tW('建议',titleSz)),Math.ceil(tW(recText,bodySz)));
+  const bw=clamp(contentW+10,72,118), bh=12+lineH+5;
+  let bx=BTNS.rule.x-bw-3, by=BTNS.rule.y;
+  if(bx<4) bx=BTNS.rule.x;
+  if(bx+bw>LW-4) bx=LW-bw-4;
+  if(by+bh>LH-4) by=LH-bh-4;
   p(bx,by,bw,bh,C0.ui_dark);
   p(bx+1,by+1,bw-2,bh-2,C0.ui_mid);
   outline(bx,by,bw,bh,C0.border,1);
-  tx('操作提示',bx+4,by+3,titleSz,C0.ty,'left',C0.black);
-  tx('[1-0]放置',bx+4,by+12,bodySz,C0.tw,'left',C0.black);
-  tx('[Back]撤回',bx+4,by+12+lineH,bodySz,C0.tw,'left',C0.black);
-  tx('[E]显示五行',bx+4,by+12+lineH*2,bodySz,C0.tw,'left',C0.black);
+  tx('建议',bx+4,by+3,titleSz,C0.ty,'left',C0.black);
   if(rec.length===2){
-    tx(recText,bx+4,by+12+lineH*3,bodySz,C0.tg,'left',C0.black);
+    tx(recText,bx+4,by+12,bodySz,C0.tg,'left',C0.black);
   }else{
-    tx(recText,bx+4,by+12+lineH*3,bodySz,C0.tw,'left',C0.black);
+    tx(recText,bx+4,by+12,bodySz,C0.tw,'left',C0.black);
   }
   regUI('assist',bx,by,bw,bh,'#88d66a');
 }
@@ -1022,7 +1028,7 @@ function drawRulePanel(){
     '相生：木生火，火生土，土生金，金生水，水生木。',
     '相克：木克土，土克水，水克火，火克金，金克木。',
     '对症：先看最旺元素，再选克它的五行。',
-    '[R] 或点击右上角规则按钮关闭',
+    '点击右上角规则按钮关闭',
   ];
   const bodyMaxW=LW-20;
   const rows=[];
@@ -1043,7 +1049,7 @@ function drawRulePanel(){
     const y=by+13+lineH*i;
     let color=C0.tw;
     if(line.startsWith('对症：')) color=C0.tg;
-    if(line.startsWith('[R]')) color=C0.ty;
+    if(line.startsWith('点击')) color=C0.ty;
     tx(line,bx+4,y,bodySz,color,'left',C0.black);
   });
   regUI('rulePanel',bx,by,bw,bh,'#ffd280');
