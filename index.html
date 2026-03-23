@@ -76,13 +76,15 @@ function syncLayout(){
   BTNS.rule ={x:LW-34,  y:15,     w:28,h:11,label:'规则'};
 }
 function resize(){
-  const safe=16;
-  const vw=Math.max(120,window.innerWidth-safe);
-  const vh=Math.max(120,window.innerHeight-safe);
+  const bs=getComputedStyle(document.body);
+  const padX=(parseFloat(bs.paddingLeft)||0)+(parseFloat(bs.paddingRight)||0);
+  const padY=(parseFloat(bs.paddingTop)||0)+(parseFloat(bs.paddingBottom)||0);
+  const vw=Math.max(120,window.innerWidth-padX);
+  const vh=Math.max(120,window.innerHeight-padY);
   FONT_SCALE=pickFontScale();
   const mobileLandscape=isMobileLike()&&isLandscapeViewport();
   if(mobileLandscape){
-    const targetLW=clamp(Math.round(LH*(vw/vh)),BASE_LW,360);
+    const targetLW=Math.max(BASE_LW,Math.round(LH*(vw/vh)));
     LW=targetLW;
   } else {
     LW=BASE_LW;
@@ -367,35 +369,7 @@ function drawScene(){
 }
 
 function drawWideSidebar(){
-  if(LW<=BASE_LW+12) return;
-  const sx=BASE_LW+2, sy=14, sw=LW-sx-4, sh=LH-18;
-  p(sx,sy,sw,sh,C0.ui_dark);
-  p(sx+1,sy+1,sw-2,sh-2,C0.ui_mid);
-  outline(sx,sy,sw,sh,C0.border,1);
-  p(sx+2,sy+2,sw-4,9,C0.ui_light);
-  outline(sx+2,sy+2,sw-4,9,C0.ui_border,1);
-  tx('宽屏信息',sx+4,sy+3,2.8,C0.ty,'left',C0.black);
-
-  const yr=YEARS[yearIdx];
-  tx('流年：'+yr.name,sx+4,sy+14,2.7,C0.tw,'left',C0.black);
-  tx('加成：',sx+4,sy+21,2.7,C0.tw,'left',C0.black);
-  yr.boost.forEach((el,i)=>{
-    drawItemIcon(el,sx+24+i*13,sy+19,10);
-    tx(EL_C[el].n,sx+26+i*13,sy+29,2.3,EL_C[el].c,'left',C0.black);
-  });
-
-  let stat='待客中',statC=C0.tw;
-  if(curNPC){
-    const b=getBalance();
-    stat=b.balanced?'平衡':(EL_C[b.highest].n+'气偏旺');
-    statC=b.balanced?C0.tg:EL_C[b.highest].c;
-  }
-  tx('状态：'+stat,sx+4,sy+38,2.7,statC,'left',C0.black);
-  tx('视野：等比扩展(无拉伸)',sx+4,sy+46,2.5,C0.tg,'left',C0.black);
-
-  tx('[R]规则  [E]五行',sx+4,sy+sh-18,2.5,C0.tw,'left',C0.black);
-  tx('[1-0]放置  [Back]撤回',sx+4,sy+sh-11,2.4,C0.tw,'left',C0.black);
-  regUI('wideSidebar',sx,sy,sw,sh,'#66c8ff');
+  // 侧栏已移除：宽屏下保持纯游戏画面
 }
 
 function drawDiamond(x,y,c){
@@ -1434,7 +1408,6 @@ function loop(ts){
 
   if(state==='title'){
     drawScene();
-    drawWideSidebar();
     drawWizard();
     drawItems();
     drawHUD();
@@ -1444,7 +1417,6 @@ function loop(ts){
   }
 
   drawScene();
-  drawWideSidebar();
   drawItems();
 
   // 状态机
