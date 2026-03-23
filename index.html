@@ -67,9 +67,17 @@ function canPlayNow(){
   return !isMobileLike()||isLandscapeViewport();
 }
 function syncLayout(){
-  const dx=Math.max(0,LW-BASE_LW);
-  TABLE_X=114+Math.floor(dx*0.35);
+  // 道具桌锚定右侧，宽屏时整体右移，保证角色与道具区分离
+  TABLE_X=LW-TABLE_W-8;
   TABLE_Y=72; TABLE_W=118; TABLE_H=12;
+  // 店主固定在道具桌右侧边缘
+  wizX=clamp(TABLE_X+TABLE_W-18,136,LW-30);
+  // 能量精灵优先在道具桌左侧；若横向空间不够则下移，避免挡货架
+  const shelfEnd=108,npcW=22;
+  const room=TABLE_X-(shelfEnd+2);
+  const noGap=room<(npcW+4);
+  npcY=noGap?82:64;
+  npcTx=clamp(noGap?(shelfEnd+2):(TABLE_X-npcW-6),56,LW-54);
   BTNS.start={x:LW/2-30,y:LH/2+36,w:60,h:12,label:'开始营业'};
   BTNS.next ={x:LW/2-40,y:LH-14,  w:80,h:11,label:'迎接下一位客人'};
   BTNS.diag ={x:LW-50,  y:80,     w:44,h:10,label:'查看五行'};
@@ -251,6 +259,7 @@ let npcX=-30,npcAnim=0,dialogAlpha=0,dialogLine='';
 let resultTimer=0;
 let particles=[],floats=[];
 let hovItem=null,tick=0;
+let wizX=180,npcTx=78,npcY=64;
 const mouse={x:0,y:0};
 let ruleOpen=false,npcMood=0;
 let uiDebug=false;
@@ -554,7 +563,7 @@ function getRecElements(){
 
 // 玩家角色（法师，在柜台后）
 function drawWizard(){
-  const x=clamp(TABLE_X+TABLE_W-28,136,LW-34), y=60;
+  const x=wizX, y=60;
   // 斗篷主体
   p(x+4, y+6,  14,18,C0.Wa_d||'#1a2a50');
   p(x+5, y+6,  12,16,'#2a3d70');
@@ -579,7 +588,7 @@ function drawWizard(){
   p(x+4, y+20, 14,4, '#1a2a50');
 }
 function getWizardRect(){
-  const x=clamp(TABLE_X+TABLE_W-28,136,LW-34), y=60;
+  const x=wizX, y=60;
   return {x:x+3,y,w:17,h:24};
 }
 
@@ -1204,8 +1213,8 @@ function checkBal(){
     balanceDone=true;npcMood=2;state='success';resultTimer=0;
     const rew=15+tableItems.length*5;coins+=rew;
     showF('+'+rew+'金币 五行平衡！',C0.ty);
-    burst(~~npcX+10,65,C0.ty,16);
-    burst(~~npcX+10,65,EL_C[curNPC.dom].c,10);
+    burst(~~npcX+10,npcY+2,C0.ty,16);
+    burst(~~npcX+10,npcY+2,EL_C[curNPC.dom].c,10);
     dialogLine='谢谢！感觉好多了！';
   }
 }
@@ -1219,7 +1228,7 @@ function reactToPlacement(item,beforeHighest,beforeDev){
   const onTarget=item.el===BEATS[beforeHighest];
   if(onTarget){
     showF('对症：'+EL_C[item.el].n+'克'+EL_C[beforeHighest].n,C0.tg);
-    burst(~~npcX+10,60,C0.tg,5);
+    burst(~~npcX+10,npcY-3,C0.tg,5);
   }
   if(afterDev<beforeDev-0.8){
     npcMood=Math.min(2,npcMood+1);
@@ -1236,8 +1245,7 @@ function reactToPlacement(item,beforeHighest,beforeDev){
   }
 }
 function npcTargetX(){
-  // 贴近道具桌左侧，避免挡住左侧道具柜
-  return Math.max(112,TABLE_X-16);
+  return npcTx;
 }
 
 function placeItemByIndex(i){
@@ -1453,26 +1461,22 @@ function loop(ts){
 
   ELS.forEach(el=>{dispEnergy[el]=lerp(dispEnergy[el]||0,curEnergy[el]||0,0.1);});
 
-  // 画法师（玩家角色，柜台后）
-  drawWizard();
-  drawAssistPanel();
-
-  // 画NPC动物
-  if(curNPC&&state!=='idle'){
-    drawAnimalNPC(npcX,64,curNPC.dom,balanceDone||npcMood>0,npcAnim);
-    // 感叹号气泡
-    if(state==='present'||state==='balancing'){
-      drawExclaim(~~npcX+4,50);
-    }
-  }
-
   drawDialog();
   drawEnergyBars();
   // 桌面物品层级始终高于对话框，避免被遮挡
   drawTableItems();
+  // 角色层在道具层之上，避免道具遮挡店主/能量精灵
+  drawWizard();
+  if(curNPC&&state!=='idle'){
+    drawAnimalNPC(npcX,npcY,curNPC.dom,balanceDone||npcMood>0,npcAnim);
+    if(state==='present'||state==='balancing'){
+      drawExclaim(~~npcX+4,npcY-14);
+    }
+  }
   tickPar(dt); tickF(dt);
   drawHUD();
   drawBtn(BTNS.rule);
+  drawAssistPanel();
   drawRulePanel();
 
   if(state==='idle')drawBtn(BTNS.next);
