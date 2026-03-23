@@ -45,6 +45,7 @@ const BTNS={
   diag: {x:LW-50,  y:80,     w:44,h:10,label:'查看五行'},
   rule: {x:LW-34,  y:15,     w:28,h:11,label:'规则'},
 };
+let wizX=180,npcTx=78,npcY=64;
 
 function pickFontScale(){
   const coarse=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;
@@ -259,7 +260,6 @@ let npcX=-30,npcAnim=0,dialogAlpha=0,dialogLine='';
 let resultTimer=0;
 let particles=[],floats=[];
 let hovItem=null,tick=0;
-let wizX=180,npcTx=78,npcY=64;
 const mouse={x:0,y:0};
 let ruleOpen=false,npcMood=0;
 let uiDebug=false;
