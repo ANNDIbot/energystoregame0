@@ -267,6 +267,8 @@ let hovItem=null,tick=0;
 const mouse={x:0,y:0};
 let ruleOpen=false,npcMood=0;
 let assistOpen=false;
+let rulePanelHit=null;
+let assistPanelHit=null;
 
 // ── 阴阳系统 ──────────────────────────────────────────
 let clientsServed=0;
@@ -305,10 +307,16 @@ function getMaxItemsAllowed(){
 const YEAR_BOOST_MSGS=['流年加持！{el}气共鸣','天时助力！{el}能量强化',
   '{el}逢流年，效力倍增','流年加成：{el}气机大振'];
 
-function toL(e){
+function clientToLogical(clientX,clientY){
   const r=C.getBoundingClientRect();
-  return{x:(e.clientX-r.left)*(LW*SC/r.width)/SC,
-         y:(e.clientY-r.top)*(LH*SC/r.height)/SC};
+  if(r.width<=0||r.height<=0) return{x:0,y:0};
+  return{
+    x:(clientX-r.left)*(LW/r.width),
+    y:(clientY-r.top)*(LH/r.height)
+  };
+}
+function toL(e){
+  return clientToLogical(e.clientX,e.clientY);
 }
 function regUI(name,x,y,w,h,c){}
 function drawDebugOverlay(){}
@@ -935,15 +943,25 @@ function drawTableItems(){
 //  五行能量条（参考图：底部横排，粗边框彩色条）
 // ══════════════════════════════════════════════════════
 function drawEnergyBars(){
+  const baseX=8, baseY=LH-58, barW=28, barH=32, gap=4;
+  const totalW=(barW+gap)*5-gap;
+  let previewItem=null;
+  if(state==='balancing'&&hovItem!==null){
+    const hi=ITEMS[hovItem];
+    if(hi&&!tableItems.some(t=>t.item.id===hi.id)) previewItem=hi;
+  }
+  let prevD=null;
+  if(previewItem) prevD=getItemPreviewDeltas(previewItem);
+
   if(!energyVisible){
     if(state==='balancing'){
       txC('[E]五行',12,LH-6,2.6,'rgba(160,140,80,0.6)',null);
+      if(previewItem&&prevD){
+        drawCompactEnergyPreview(baseX,baseY,barW,barH,gap,prevD);
+      }
     }
     return;
   }
-  // 参考图：底部一排5个能量条，每条宽约30px
-  const baseX=8, baseY=LH-58, barW=28, barH=32, gap=4;
-  const totalW=(barW+gap)*5-gap;
   regUI('energy',baseX-4,baseY-4,totalW+8,barH+20,'#66b3ff');
 
   // 大背景框
@@ -952,6 +970,7 @@ function drawEnergyBars(){
   p(baseX-3,  baseY-3,  totalW+6,barH+18,C0.ui_mid);
 
   const yr=YEARS[yearIdx];
+  const balNow=getBalance().balanced;
   ELS.forEach((el,i)=>{
     const ec=EL_C[el];
     const val=Math.min(100,Math.max(0,Math.round(dispEnergy[el]||0)));
@@ -972,13 +991,32 @@ function drawEnergyBars(){
       p(bx+2, by+barH-2-fillH, barW-4,fillH, ec.d);
       p(bx+3, by+barH-2-fillH, barW-6,fillH, ec.c);
       if(fillH>2) p(bx+3,by+barH-2-fillH,barW-8,2,ec.l);
-      // 流年加成闪烁
       if(yr.boost.includes(el)&&tick%20<10){
         pA(bx+2,by+barH-2-fillH,barW-4,2,C0.ty,0.8);
       }
-      // 过旺警告
       if(val>75&&tick%14<7){
         pA(bx+2,by+barH-2-fillH,barW-4,fillH,'#ffffff',0.15);
+      }
+    }
+
+    // 悬停道具：半透明预览高度（应用后数值）
+    if(previewItem&&prevD){
+      const pval=Math.min(100,Math.max(0,Math.round(prevD.nextVals[el]||0)));
+      const preFill=Math.round((barH-4)*pval/100);
+      if(preFill>fillH){
+        const y0=by+barH-2-preFill;
+        const dh=preFill-fillH;
+        if(dh>0) pA(bx+2,y0+(preFill-dh),barW-4,dh,ec.c,0.38);
+      }else if(preFill<fillH){
+        pA(bx+2,by+barH-2-preFill,barW-4,fillH-preFill,'#ff4040',0.22);
+      }
+      const d=prevD.deltas[el];
+      if(d!==0){
+        const dc=d>0?C0.tg:C0.tr;
+        txC((d>0?'+':'')+d,bx+barW/2,by-3,2.3,dc,C0.black);
+      }
+      if(prevD.boosted&&el===previewItem.el&&tick%16<8){
+        pA(bx+barW-6,by+2,4,4,C0.ty,0.55);
       }
     }
 
@@ -988,34 +1026,48 @@ function drawEnergyBars(){
     const zoneY=by+barH-2-hiH;
     const zoneH=hiH-loH;
     pA(bx+2,zoneY,barW-4,zoneH,'#00ff60',0.10);
-    // 平衡区上下边线
     pA(bx+2,zoneY,barW-4,1,'#00ff60',0.55);
     pA(bx+2,zoneY+zoneH,barW-4,1,'#00ff60',0.55);
-    // 是否在区内
     const inZone=val>=BAL_LO&&val<=BAL_HI;
     if(inZone){
       pA(bx,by,barW,barH,'#00ff60',0.06);
       outline(bx,by,barW,barH,'#00ff60',2);
     }
 
-    // 标签（下方）
+    if(balNow){
+      const g=0.14+0.08*Math.sin(tick*0.18);
+      pA(bx-1,by-1,barW+2,barH+2,C0.tg,g);
+      outline(bx-1,by-1,barW+2,barH+2,C0.ty,1);
+    }
+
     txC(ec.n,bx+barW/2,by+barH+2,3,ec.c,C0.black);
     txC(val+'%',bx+barW/2,by+barH+8,2.5,C0.tw,C0.black);
-    // 在区内打勾
     if(inZone) txC('✓',bx+barW/2,by+barH+13,2.5,C0.tg,C0.black);
   });
 
-  // 平衡状态
-  const bal=getBalance();
-  const bc=bal.balanced?C0.tg:bal.allInZone?C0.ty:EL_C[bal.highest].c;
-  const diffLbl=getDiffLabel();
-  const msg=bal.balanced?'✦ 五行平衡 ✦':
-    bal.allInZone?'全入平衡区！':
-    '['+diffLbl+'] '+EL_C[bal.highest].n+'气旺 偏差'+~~bal.maxDev+'→'+bal.thresh;
-  txC(msg,baseX+totalW/2,baseY-20,3.5,bc,C0.black);
-
-  // [E]关闭
   txR('[E]关',baseX+totalW+2,baseY-4,2.8,C0.tw,C0.black);
+}
+
+// E 未开时，悬停道具仍显示五行增量简表
+function drawCompactEnergyPreview(baseX,baseY,barW,barH,gap,prevD){
+  const py=LH-22;
+  p(2,py-2,LW-4,20,C0.ui_dark);
+  outline(2,py-2,LW-4,20,C0.border,1);
+  tx('预览 Δ（松手后参考上方[E]五行）',4,py-1,2.4,C0.ty,'left',C0.black);
+  ELS.forEach((el,i)=>{
+    const ec=EL_C[el];
+    const d=prevD.deltas[el];
+    const bx=baseX+i*(barW+gap);
+    if(d!==0){
+      const s=(d>0?'+':'')+d;
+      txC(s,bx+barW/2,py+8,2.8,d>0?C0.tg:C0.tr,C0.black);
+    }else{
+      txC('·',bx+barW/2,py+8,2.8,ec.c,C0.black);
+    }
+  });
+  if(prevD.boosted){
+    txR('流年×1.3',LW-4,py+8,2.4,C0.ty,C0.black);
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1065,25 +1117,20 @@ function drawHUD(){
   if(gap>tW(title,titleSz)+2){
     txC(title,LW/2,5,titleSz,C0.white,C0.black);
   }
-  regUI('hud',sx,sy,sw,sh,'#8fd6ff');
-
-  // ── 第二行：按钮背景 + 调理时的进度条 ──
-  p(sx,sy+sh+1,sw,11,C0.ui_dark);
-  outline(sx,sy+sh+1,sw,11,C0.ui_border,1);
-  if(curNPC&&state==='balancing'){
-    const dev=Math.round(getMaxDev());
-    const goal=getBalThreshold();
-    const pct=Math.max(0,Math.min(1,(dev-goal)/(60-goal)));
-    const barC=pct<0.3?C0.tg:pct<0.65?C0.ty:C0.tr;
-    const fw=Math.round((sw-2)*(1-pct));
-    if(fw>0){p(sx+1,sy+sh+2,fw,9,barC);}
-    const diffL=getDiffLabel();
-    const devTxt='['+diffL+'] '+(dev<=goal?'✦已平衡':'偏差'+dev+'→'+goal);
-    txC(devTxt,LW/2,sy+sh+6,2.8,dev<=goal?C0.tg:C0.tw,C0.black);
+  if(state!=='title'){
+    const boosts=YEARS[yearIdx].boost;
+    let ix=13+tW(coinTxt,3)+4;
+    boosts.forEach(el=>{
+      p(ix,3,6,6,EL_C[el].d);
+      p(ix+1,4,4,4,EL_C[el].c);
+      ix+=8;
+    });
   }
+  regUI('hud',sx,sy,sw,sh,'#8fd6ff');
 }
 
 function drawAssistPanel(){
+  assistPanelHit=null;
   if(!curNPC||(state!=='present'&&state!=='balancing')) return;
   if(!assistOpen) return;
   if(ruleOpen) return;
@@ -1092,21 +1139,32 @@ function drawAssistPanel(){
   const recText=rec.length===2?(diffTag+'建议：'+EL_C[rec[0]].n+' / '+EL_C[rec[1]].n):('建议：--');
   const titleSz=3.1,bodySz=3.0;
   const lineH=tLH(bodySz);
-  const contentW=Math.max(Math.ceil(tW('建议',titleSz)),Math.ceil(tW(recText,bodySz)));
-  const bw=clamp(contentW+10,72,118), bh=12+lineH+5;
+  const solv=state==='balancing'?isSolvableFromCurrent():true;
+  const warnTxt=!solv?'当前局面可能无法平衡，请撤回。':'';
+  const contentW=Math.max(
+    Math.ceil(tW('建议',titleSz)),
+    Math.ceil(tW(recText,bodySz)),
+    warnTxt?Math.ceil(tW(warnTxt,2.8)):0
+  );
+  const bw=clamp(contentW+10,72,130),
+    bh=12+lineH+(warnTxt?lineH:0)+5;
   let bx=BTNS.rule.x-bw-3, by=BTNS.rule.y;
   if(bx<4) bx=BTNS.rule.x;
   if(bx+bw>LW-4) bx=LW-bw-4;
   if(by+bh>LH-4) by=LH-bh-4;
   p(bx,by,bw,bh,C0.ui_dark);
   p(bx+1,by+1,bw-2,bh-2,C0.ui_mid);
-  outline(bx,by,bw,bh,C0.border,1);
+  outline(bx,by,bw,bh,solv?C0.border:C0.tr,solv?1:2);
   tx('建议',bx+4,by+3,titleSz,C0.ty,'left',C0.black);
   if(rec.length===2){
     tx(recText,bx+4,by+12,bodySz,C0.tg,'left',C0.black);
   }else{
     tx(recText,bx+4,by+12,bodySz,C0.tw,'left',C0.black);
   }
+  if(warnTxt){
+    tx(warnTxt,bx+4,by+12+lineH,2.8,C0.tr,'left',C0.black);
+  }
+  assistPanelHit={x:bx,y:by,w:bw,h:bh};
   regUI('assist',bx,by,bw,bh,'#88d66a');
 }
 
@@ -1150,6 +1208,7 @@ function drawYinYangIntro(){
 }
 
 function drawRulePanel(){
+  rulePanelHit=null;
   if(!ruleOpen||state==='title') return;
   const title='五行生克原理';
   const bodySz=2.7,titleSz=3.1,lineH=tLH(bodySz);
@@ -1160,7 +1219,8 @@ function drawRulePanel(){
     '目标：偏差<阈值(第1-5天30/6-10天24/11+天18)，',
     '      或全元素进绿区[32~68]为完美！',
     yinYangActive?'阳性道具：+16/-20/+6；阴性：+10/-14/+4':'第5天解锁阴阳规则。',
-    '点击右上角规则按钮关闭',
+    '读规则时可按 [E] 展开底部五行条对照。',
+    '点击「规则」按钮或按 [R] 关闭本页。',
   ];
   const bodyMaxW=LW-20;
   const rows=[];
@@ -1169,9 +1229,9 @@ function drawRulePanel(){
     Math.ceil(tW(title,titleSz)),
     ...rows.map(r=>Math.ceil(tW(r,bodySz)))
   );
-  const bw=clamp(contentW+10,132,LW-8), bh=14+rows.length*lineH+5;
+  const bw=clamp(contentW+10,118,Math.min(152,LW-36)), bh=14+rows.length*lineH+5;
   const bx=LW-bw-4,by=28;
-  p(bx,by,bw,bh,C0.ui_dark);
+  pA(bx,by,bw,bh,C0.ui_dark,0.88);
   p(bx+1,by+1,bw-2,bh-2,C0.ui_mid);
   outline(bx,by,bw,bh,C0.border_gold,1);
   p(bx+2,by+2,bw-4,9,C0.ui_light);
@@ -1185,6 +1245,7 @@ function drawRulePanel(){
     tx(line,bx+4,y,bodySz,color,'left',C0.black);
   });
   regUI('rulePanel',bx,by,bw,bh,'#ffd280');
+  rulePanelHit={x:bx,y:by,w:bw,h:bh};
 }
 
 // ══════════════════════════════════════════════════════
@@ -1313,7 +1374,17 @@ function drawTooltip(){
     const yanglbl=isYang?'阳(甲丙戊庚壬)':'阴(乙丁己辛癸)';
     descExtra=[yanglbl,'自+'+ef.self+' 克'+ef.beats+' 生+'+ef.gens];
   }
-  const descLines=[...wrapTextLines(item.desc,maxTextW,descSz),...descExtra];
+  let previewExtra=[];
+  if(state==='balancing'&&!tableItems.some(t=>t.item.id===item.id)){
+    const pd=getItemPreviewDeltas(item);
+    const parts=ELS.map(el=>{
+      const d=pd.deltas[el];
+      if(d===0) return '';
+      return EL_C[el].n+(d>0?'+':'')+d;
+    }).filter(Boolean);
+    previewExtra=['预览五行 Δ：'+parts.join(' ')+(pd.boosted?'  (流年×1.3)':'')];
+  }
+  const descLines=[...wrapTextLines(item.desc,maxTextW,descSz),...descExtra,...previewExtra];
   const titleW=Math.ceil(tW(title,3.2));
   const descW=Math.max(...descLines.map(s=>Math.ceil(tW(s,descSz))));
   const bw=clamp(Math.max(titleW,descW)+8,54,106);
@@ -1326,8 +1397,12 @@ function drawTooltip(){
   const tBorder=yinYangActive?(isYang?'#f0c040':'#8888ee'):EL_C[item.el].c;
   outline(bx,by,bw,bh,tBorder,1);
   txC(title,bx+bw/2,by+2,3.2,EL_C[item.el].c,C0.black);
+  const iPrev=descLines.length-previewExtra.length;
+  const iExtra=descLines.length-previewExtra.length-descExtra.length;
   descLines.forEach((line,i)=>{
-    const col=i>=descLines.length-descExtra.length?tBorder:C0.tw;
+    let col=C0.tw;
+    if(previewExtra.length&&i>=iPrev) col=C0.tb;
+    else if(descExtra.length&&i>=iExtra) col=tBorder;
     txC(line,bx+bw/2,by+9+i*lineH,descSz,col,C0.black);
   });
   regUI('tooltip',bx,by,bw,bh,'#9ef0ff');
@@ -1399,6 +1474,41 @@ function isRoundSolvable(baseEnergy,yyActive){
 }
 function isNpcSolvableToday(npc){
   return isRoundSolvable(makeRoundBaseEnergy(npc),yinYangActive);
+}
+function getItemPreviewDeltas(item){
+  const before={};
+  ELS.forEach(el=>{before[el]=Math.round(curEnergy[el]||0);});
+  const next={...curEnergy};
+  simulateApplyItem(next,item,yinYangActive);
+  const deltas={};
+  ELS.forEach(el=>{deltas[el]=Math.round(next[el]||0)-before[el];});
+  const boosted=YEARS[yearIdx].boost.includes(item.el);
+  return{deltas,boosted,nextVals:next};
+}
+function isSolvableFromCurrent(){
+  if(state!=='balancing') return true;
+  if(getBalance().balanced) return true;
+  const maxItems=getMaxItemsAllowed();
+  const rem=maxItems-tableItems.length;
+  if(rem<=0) return getBalance().balanced;
+  const used=new Set(tableItems.map(t=>t.item.id));
+  const idxs=[];
+  ITEMS.forEach((it,i)=>{if(!used.has(it.id))idxs.push(i);});
+  const pickMask=Array(idxs.length).fill(false);
+  function dfs(depth,energy){
+    if(getEnergyBalance(energy).balanced) return true;
+    if(depth>=rem) return false;
+    for(let k=0;k<idxs.length;k++){
+      if(pickMask[k]) continue;
+      pickMask[k]=true;
+      const n2={...energy};
+      simulateApplyItem(n2,ITEMS[idxs[k]],yinYangActive);
+      if(dfs(depth+1,n2)) return true;
+      pickMask[k]=false;
+    }
+    return false;
+  }
+  return dfs(0,{...curEnergy});
 }
 function applyItem(item){
   const e=item.el,t=BEATS[e],g=GENS[e];
@@ -1584,11 +1694,24 @@ function handlePointerDown(x,y){
     }
     return;
   }
+  if(state!=='title'&&inB(BTNS.rule)){
+    ruleOpen=!ruleOpen;
+    return;
+  }
+  if(ruleOpen&&state!=='title'){
+    const rh=rulePanelHit;
+    if(rh&&x>=rh.x&&x<=rh.x+rh.w&&y>=rh.y&&y<=rh.y+rh.h) return;
+    ruleOpen=false;
+    return;
+  }
   if(curNPC&&(state==='present'||state==='balancing')&&inB(BTNS.assist)){
     assistOpen=!assistOpen;
     return;
   }
-  if(state!=='title'&&inB(BTNS.rule)){ruleOpen=!ruleOpen;return;}
+  if(assistOpen&&assistPanelHit&&(state==='present'||state==='balancing')){
+    const a=assistPanelHit;
+    if(x>=a.x&&x<=a.x+a.w&&y>=a.y&&y<=a.y+a.h) return;
+  }
   if(state==='title'){if(inB(BTNS.start)){state='idle';nextClient();}return;}
   if(state==='idle'){if(inB(BTNS.next))nextClient();return;}
   if(state==='present'){
@@ -1627,11 +1750,7 @@ C.addEventListener('click',e=>{
 function toLTouch(e){
   const t=(e.touches&&e.touches[0])||(e.changedTouches&&e.changedTouches[0]);
   if(!t) return null;
-  const r=C.getBoundingClientRect();
-  return {
-    x:(t.clientX-r.left)*(LW*SC/r.width)/SC,
-    y:(t.clientY-r.top)*(LH*SC/r.height)/SC
-  };
+  return clientToLogical(t.clientX,t.clientY);
 }
 
 C.addEventListener('touchstart',e=>{
@@ -1676,6 +1795,11 @@ window.addEventListener('contextmenu',e=>{
 window.addEventListener('keydown',e=>{
   if(e.key==='r'||e.key==='R'){
     if(state!=='title') ruleOpen=!ruleOpen;
+    return;
+  }
+  if(ruleOpen&&state!=='title'){
+    if(e.key==='Escape'){ruleOpen=false;return;}
+    if(e.key==='e'||e.key==='E'){energyVisible=!energyVisible;return;}
     return;
   }
   if(e.key==='e'||e.key==='E'){
@@ -1757,7 +1881,6 @@ function loop(ts){
   ELS.forEach(el=>{dispEnergy[el]=lerp(dispEnergy[el]||0,curEnergy[el]||0,0.1);});
 
   drawDialog();
-  drawEnergyBars();
   // 桌面物品层级始终高于对话框，避免被遮挡
   drawTableItems();
   regUI('table',TABLE_X,TABLE_Y,TABLE_W,TABLE_H,'#e3d06a');
@@ -1780,6 +1903,7 @@ function loop(ts){
   drawBtn(BTNS.rule);
   drawAssistPanel();
   drawRulePanel();
+  drawEnergyBars();
   drawYinYangIntro();  // 最后画，保证在最顶层
 
   if(state==='idle')drawBtn(BTNS.next);
