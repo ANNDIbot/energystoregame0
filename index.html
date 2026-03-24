@@ -44,8 +44,9 @@ const BTNS={
   next: {x:LW/2-40,y:LH-14,  w:80,h:11,label:'迎接下一位客人'},
   diag: {x:LW-50,  y:80,     w:44,h:10,label:'查看五行'},
   rule: {x:LW-34,  y:15,     w:28,h:11,label:'规则'},
+  assist:{x:LW-66, y:15,     w:30,h:11,label:'建议'},
 };
-let wizX=180,npcTx=78,npcY=64;
+let wizX=180,wizY=64,npcTx=78,npcY=64;
 
 function pickFontScale(){
   const coarse=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;
@@ -72,16 +73,18 @@ function syncLayout(){
   const dx=Math.max(0,LW-BASE_LW);
   TABLE_X=112+Math.floor(dx*0.12);
   TABLE_Y=72; TABLE_W=118; TABLE_H=12;
-  // 店主放在道具桌右侧，保证不压住第3个道具位
-  wizX=clamp(TABLE_X+TABLE_W+10,136,LW-30);
-  // 能量精灵贴近道具桌左侧，避开货架区域
-  npcTx=clamp(TABLE_X+14,110,LW-54);
-  // 与店主保持同一水平线
-  npcY=64;
+  // 店主右移：与精灵拉开距离，并避开道具桌摆放区
+  wizX=clamp(TABLE_X+TABLE_W+20,148,LW-26);
+  // 能量精灵左移：不压住道具位，且与店主形成清晰分工
+  npcTx=clamp(TABLE_X-12,92,LW-62);
+  // 统一基线：店主与精灵在同一水平线
+  wizY=66;
+  npcY=66;
   BTNS.start={x:LW/2-30,y:LH/2+36,w:60,h:12,label:'开始营业'};
   BTNS.next ={x:LW/2-40,y:LH-14,  w:80,h:11,label:'迎接下一位客人'};
   BTNS.diag ={x:LW-50,  y:80,     w:44,h:10,label:'查看五行'};
   BTNS.rule ={x:LW-34,  y:15,     w:28,h:11,label:'规则'};
+  BTNS.assist={x:LW-66,y:15,      w:30,h:11,label:'建议'};
 }
 function resize(){
   const bs=getComputedStyle(document.body);
@@ -263,9 +266,9 @@ let particles=[],floats=[];
 let hovItem=null,tick=0;
 const mouse={x:0,y:0};
 let ruleOpen=false,npcMood=0;
+let assistOpen=false;
 
 // ── 阴阳系统 ──────────────────────────────────────────
-const YIN_YANG_UNLOCK_AFTER=5;
 let clientsServed=0;
 let yinYangActive=false;
 let yinYangIntroOpen=false;
@@ -278,11 +281,24 @@ const YIN_EFF ={self:10,beats:-14,gens:4};
 
 // ── 平衡区间 ──────────────────────────────────────────
 const BAL_LO=32,BAL_HI=68;
-// 难度阈值：day1-2 简单(32)，day3-5 中等(26)，day6+ 严格(20)
+// 难度阈值：day1-5 入门(30)，day6-10 进阶(24)，day11+ 挑战(18)
 function getBalThreshold(){
-  if(day<=2) return 32;
-  if(day<=5) return 26;
-  return 20;
+  if(day<=5) return 30;
+  if(day<=10) return 24;
+  return 18;
+}
+function getDiffLabel(){
+  if(day<=5) return '简单';
+  if(day<=10) return '中等';
+  return '困难';
+}
+function getDiffTag(){
+  if(day<=5) return '[简]';
+  if(day<=10) return '[中]';
+  return '[难]';
+}
+function getMaxItemsAllowed(){
+  return day>10?4:3;
 }
 
 // ── 流年放置特效文字 ──────────────────────────────────
@@ -582,7 +598,7 @@ function getRecElements(){
 
 // 玩家角色（法师，在柜台后）
 function drawWizard(){
-  const x=wizX, y=64;
+  const x=wizX, y=wizY;
   // 斗篷主体
   p(x+4, y+6,  14,18,C0.Wa_d||'#1a2a50');
   p(x+5, y+6,  12,16,'#2a3d70');
@@ -607,7 +623,7 @@ function drawWizard(){
   p(x+4, y+20, 14,4, '#1a2a50');
 }
 function getWizardRect(){
-  const x=wizX, y=64;
+  const x=wizX, y=wizY;
   return {x:x+3,y,w:17,h:24};
 }
 
@@ -984,7 +1000,7 @@ function drawEnergyBars(){
   // 平衡状态
   const bal=getBalance();
   const bc=bal.balanced?C0.tg:bal.allInZone?C0.ty:EL_C[bal.highest].c;
-  const diffLbl=day<=2?'简单':day<=5?'中等':'困难';
+  const diffLbl=getDiffLabel();
   const msg=bal.balanced?'✦ 五行平衡 ✦':
     bal.allInZone?'全入平衡区！':
     '['+diffLbl+'] '+EL_C[bal.highest].n+'气旺 偏差'+~~bal.maxDev+'→'+bal.thresh;
@@ -1042,32 +1058,14 @@ function drawHUD(){
     txC(title,LW/2,5,titleSz,C0.white,C0.black);
   }
   regUI('hud',sx,sy,sw,sh,'#8fd6ff');
-
-  // ── 第2行：平衡进度 ──────────────────────────────────
-  if(curNPC&&(state==='balancing'||state==='present')){
-    const dev=getMaxDev();
-    const goal=getBalThreshold();
-    const ph=6;
-    const py2=sy+sh+1;
-    p(sx,py2,sw,ph,C0.ui_dark);
-    outline(sx,py2,sw,ph,C0.ui_border,1);
-    // 进度条：dev越小越好，满格=balanced
-    const pct=Math.max(0,Math.min(1,(dev-goal)/(80-goal)));
-    const barCol=pct<0.25?C0.tg:pct<0.55?C0.ty:C0.tr;
-    const fillW=Math.round((sw-2)*( 1-pct));
-    if(fillW>0){p(sx+1,py2+1,fillW,ph-2,barCol);}
-    // 文字：偏差数值
-    const diffLabel=day<=2?'简单':day<=5?'中等':'困难';
-    const devTxt='['+diffLabel+'] '+(dev<=goal?'✦已平衡':'偏差'+~~dev+'→'+goal);
-    txC(devTxt,LW/2,py2+1,2.6,dev<=goal?C0.tg:C0.tw,C0.black);
-  }
 }
 
 function drawAssistPanel(){
   if(!curNPC||(state!=='present'&&state!=='balancing')) return;
+  if(!assistOpen) return;
   if(ruleOpen) return;
   const rec=getRecElements();
-  const diffTag=day<=2?'[简]':day<=5?'[中]':'[难]';
+  const diffTag=getDiffTag();
   const recText=rec.length===2?(diffTag+'建议：'+EL_C[rec[0]].n+' / '+EL_C[rec[1]].n):('建议：--');
   const titleSz=3.1,bodySz=3.0;
   const lineH=tLH(bodySz);
@@ -1136,9 +1134,9 @@ function drawRulePanel(){
     '相生：木生火，火生土，土生金，金生水，水生木。',
     '相克：木克土，土克水，水克火，火克金，金克木。',
     '对症：先看最旺元素，再选克它的五行。',
-    '目标：偏差<阈值(第1-2天32/3-5天26/6+天20)，',
+    '目标：偏差<阈值(第1-5天30/6-10天24/11+天18)，',
     '      或全元素进绿区[32~68]为完美！',
-    yinYangActive?'阳性道具：+16/-20/+6；阴性：+10/-14/+4':'第6位客人后解锁阴阳规则。',
+    yinYangActive?'阳性道具：+16/-20/+6；阴性：+10/-14/+4':'第5天解锁阴阳规则。',
     '点击右上角规则按钮关闭',
   ];
   const bodyMaxW=LW-20;
@@ -1232,7 +1230,35 @@ function tickPar(dt){
     return true;
   });
 }
-function showF(msg,c){floats.push({msg,c:c||C0.ty,x:LW/2,y:60,life:2});}
+function getFloatLane(msg,c){
+  const text=String(msg||'');
+  // 先按语义关键词，再按颜色兜底，分配到不同显示轨道
+  if(text.includes('流年')) return 'year';
+  if(text.includes('五行平衡')||text.includes('谢谢')) return 'success';
+  if(text.includes('对症')||text.includes('建议')) return 'hint';
+  if(text.includes('撤回')||text.includes('已使用')||text.includes('最多')) return 'warn';
+  if(c===C0.tr) return 'warn';
+  if(c===C0.tg) return 'hint';
+  if(c===C0.ty) return 'success';
+  return 'info';
+}
+function getLaneAnchor(lane){
+  switch(lane){
+    case 'success': return {x:LW/2,    y:54};
+    case 'hint':    return {x:LW*0.30, y:62};
+    case 'warn':    return {x:LW*0.72, y:70};
+    case 'year':    return {x:LW/2,    y:40};
+    default:        return {x:LW/2,    y:66};
+  }
+}
+function showF(msg,c){
+  const lane=getFloatLane(msg,c);
+  const base=getLaneAnchor(lane);
+  // 在同类型轨道内纵向堆叠，跨类型不互相挤占
+  const activeInLane=floats.filter(f=>f.life>0&&f.lane===lane).length;
+  const stackOffset=Math.min(activeInLane,4)*8;
+  floats.push({msg,c:c||C0.ty,x:base.x,y:base.y+stackOffset,life:2,lane});
+}
 function tickF(dt){
   floats=floats.filter(f=>{
     f.y-=15*dt; f.life-=dt;
@@ -1298,9 +1324,58 @@ function getBalance(){
   const balanced=maxDev<thresh||allInZone;
   return{balanced,allInZone,maxDev,thresh,highest};
 }
+function getEnergyBalance(energy){
+  const vals=ELS.map(el=>energy[el]||0);
+  const avg=vals.reduce((a,b)=>a+b,0)/5;
+  const maxDev=Math.max(...vals.map(v=>Math.abs(v-avg)));
+  const allInZone=ELS.every(el=>{const v=energy[el]||0;return v>=BAL_LO&&v<=BAL_HI;});
+  const thresh=getBalThreshold();
+  return {balanced:maxDev<thresh||allInZone,maxDev,allInZone,thresh};
+}
 function getItemEffect(item){
   if(!yinYangActive) return {self:14,beats:-18,gens:5};
   return ITEM_YANG[item.id]?YANG_EFF:YIN_EFF;
+}
+function getItemEffectForMode(item,yyActive){
+  if(!yyActive) return {self:14,beats:-18,gens:5};
+  return ITEM_YANG[item.id]?YANG_EFF:YIN_EFF;
+}
+function makeRoundBaseEnergy(npc){
+  const energy={...npc.energy};
+  YEARS[yearIdx].boost.forEach(el=>{
+    energy[el]=clamp((energy[el]||0)+12,0,100);
+  });
+  return energy;
+}
+function simulateApplyItem(energy,item,yyActive){
+  const e=item.el,t=BEATS[e],g=GENS[e];
+  const ef=getItemEffectForMode(item,yyActive);
+  const mult=YEARS[yearIdx].boost.includes(e)?1.3:1;
+  energy[e]=clamp((energy[e]||0)+Math.round(ef.self*mult),0,100);
+  energy[t]=clamp((energy[t]||0)+Math.round(ef.beats*mult),0,100);
+  energy[g]=clamp((energy[g]||0)+Math.round(ef.gens*mult),0,100);
+}
+function isRoundSolvable(baseEnergy,yyActive){
+  const n=ITEMS.length;
+  const maxItems=getMaxItemsAllowed();
+  const used=Array(n).fill(false);
+  function dfs(depth,energy){
+    if(depth>0&&getEnergyBalance(energy).balanced) return true;
+    if(depth>=maxItems) return false;
+    for(let i=0;i<n;i++){
+      if(used[i]) continue;
+      used[i]=true;
+      const next={...energy};
+      simulateApplyItem(next,ITEMS[i],yyActive);
+      if(dfs(depth+1,next)) return true;
+      used[i]=false;
+    }
+    return false;
+  }
+  return dfs(0,{...baseEnergy});
+}
+function isNpcSolvableToday(npc){
+  return isRoundSolvable(makeRoundBaseEnergy(npc),yinYangActive);
 }
 function applyItem(item){
   const e=item.el,t=BEATS[e],g=GENS[e];
@@ -1334,19 +1409,35 @@ function _spawnNextClient(){
   if(npcPool.length===0){
     npcPool=[...NPCS].sort(()=>Math.random()-0.5);
   }
-  const npc={...npcPool.shift()};
+  let pickIndex=-1;
+  for(let i=0;i<npcPool.length;i++){
+    if(isNpcSolvableToday(npcPool[i])){pickIndex=i;break;}
+  }
+  if(pickIndex<0){
+    npcPool=[...NPCS].sort(()=>Math.random()-0.5);
+    for(let i=0;i<npcPool.length;i++){
+      if(isNpcSolvableToday(npcPool[i])){pickIndex=i;break;}
+    }
+  }
+  if(pickIndex<0){
+    pickIndex=0;
+    showF('警告：未找到可解客人，已回退默认',C0.tr);
+  }
+  const npc={...npcPool.splice(pickIndex,1)[0]};
   npc._line=npc.lines[~~(Math.random()*npc.lines.length)];
-  curNPC=npc; curEnergy={...npc.energy};
-  YEARS[yearIdx].boost.forEach(el=>{curEnergy[el]=clamp((curEnergy[el]||0)+12,0,100);});
+  curNPC=npc; curEnergy=makeRoundBaseEnergy(npc);
   Object.assign(dispEnergy,curEnergy);
   tableItems=[];energyVisible=false;balanceDone=false;
+  assistOpen=false;
   npcMood=0;ruleOpen=false;
   npcX=-30;dialogAlpha=0;dialogLine=npc._line;resultTimer=0;
   state='arriving';
 }
 function nextClient(){
   if(state!=='idle'&&state!=='title')return;
-  // 检查阴阳介绍弹窗（第6位客人前）；关闭弹窗时调用 _spawnNextClient
+  // 第5天起开启阴阳系统
+  if(day>=5&&!yinYangActive) yinYangActive=true;
+  // 检查阴阳介绍弹窗（首次开启前）；关闭弹窗时调用 _spawnNextClient
   if(yinYangActive&&!yinYangIntroShown){
     yinYangIntroOpen=true;yinYangIntroShown=true;
     return;
@@ -1358,16 +1449,16 @@ function checkBal(){
   if(getBalance().balanced){
     balanceDone=true;npcMood=2;state='success';resultTimer=0;
     clientsServed++;
-    // 第5位成功后，下次开始前解锁阴阳
-    if(clientsServed>=YIN_YANG_UNLOCK_AFTER&&!yinYangActive){
-      yinYangActive=true;
-    }
     const rew=15+tableItems.length*5;coins+=rew;
     showF('+'+rew+'金币 五行平衡！',C0.ty);
     burst(~~npcX+10,npcY+2,C0.ty,16);
     burst(~~npcX+10,npcY+2,EL_C[curNPC.dom].c,10);
     dialogLine='谢谢！感觉好多了！';
   }
+}
+function afterEnergyChanged(){
+  // 所有会修改能量的操作（放置/撤回）统一走这里，避免漏判成功
+  checkBal();
 }
 function getMaxDev(){
   const vals=ELS.map(el=>curEnergy[el]||0);
@@ -1377,17 +1468,19 @@ function getMaxDev(){
 function reactToPlacement(item,beforeHighest,beforeDev){
   const afterDev=getMaxDev();
   const onTarget=item.el===BEATS[beforeHighest];
+  const improved=afterDev<beforeDev-0.8;
+  const worsened=afterDev>beforeDev+0.8;
   if(onTarget){
     showF('对症：'+EL_C[item.el].n+'克'+EL_C[beforeHighest].n,C0.tg);
     burst(~~npcX+10,npcY-3,C0.tg,5);
   }
   // 流年提示在 applyItem 里已显示，此处不重复
-  if(afterDev<beforeDev-0.8){
+  if(improved){
     npcMood=Math.min(2,npcMood+1);
     if(!balanceDone){
       dialogLine=onTarget?'就是这味道，顺多了。':'嗯，气机在回正。';
     }
-  }else if(afterDev>beforeDev+0.8){
+  }else if(worsened){
     npcMood=Math.max(-2,npcMood-1);
     if(!balanceDone){
       dialogLine=onTarget?'方向对了，但火候还差一点。':'不太对，我体内更乱了。';
@@ -1404,7 +1497,8 @@ function placeItemByIndex(i){
   if(state!=='balancing') return;
   const item=ITEMS[i];
   if(!item) return;
-  if(tableItems.length>=3){showF('最多3件',C0.tr);return;}
+  const maxItems=getMaxItemsAllowed();
+  if(tableItems.length>=maxItems){showF('最多'+maxItems+'件',C0.tr);return;}
   if(tableItems.some(t=>t.item.id===item.id)){showF('已使用',C0.tr);return;}
   const beforeHighest=getBalance().highest;
   const beforeDev=getMaxDev();
@@ -1413,7 +1507,7 @@ function placeItemByIndex(i){
   const pos=getItemSlot(i);
   burst(pos.x+6,pos.y+6,EL_C[item.el].c,6);
   showF('+'+item.name,EL_C[item.el].c);
-  checkBal();
+  afterEnergyChanged();
 }
 
 function undoTableItem(i){
@@ -1424,6 +1518,7 @@ function undoTableItem(i){
   revertItem(t.item);tableItems.splice(i,1);
   showF('撤回 '+t.item.name,C0.E_l);
   burst(tx2+16,ty2+5,EL_C[t.item.el].c,4);
+  afterEnergyChanged();
 }
 
 // ══════════════════════════════════════════════════════
@@ -1454,6 +1549,10 @@ function handlePointerDown(x,y){
       yinYangIntroOpen=false;
       if(state==='idle') _spawnNextClient();
     }
+    return;
+  }
+  if(curNPC&&(state==='present'||state==='balancing')&&inB(BTNS.assist)){
+    assistOpen=!assistOpen;
     return;
   }
   if(state!=='title'&&inB(BTNS.rule)){ruleOpen=!ruleOpen;return;}
@@ -1612,7 +1711,10 @@ function loop(ts){
     if(npcX<-28){
       state='idle';curNPC=null;energyVisible=false;balanceDone=false;
       day++;
-      if(day%5===0){yearIdx=(yearIdx+1)%YEARS.length;showF('流年更替:'+YEARS[yearIdx].name,C0.ty);}
+      if(day>1&&(day-1)%10===0){
+        yearIdx=(yearIdx+1)%YEARS.length;
+        showF('流年更替:'+YEARS[yearIdx].name,C0.ty);
+      }
     }
   }
 
@@ -1635,6 +1737,10 @@ function loop(ts){
   }
   tickPar(dt); tickF(dt);
   drawHUD();
+  if(curNPC&&(state==='present'||state==='balancing')){
+    BTNS.assist.label='建议';
+    drawBtn(BTNS.assist);
+  }
   drawBtn(BTNS.rule);
   drawAssistPanel();
   drawYinYangIntro();
@@ -1649,6 +1755,7 @@ function loop(ts){
   if((state==='idle'&&inB(BTNS.next))||(state==='present'&&inB(BTNS.diag))||
      (state==='title'&&inB(BTNS.start)))cur='pointer';
   if(state!=='title'&&inB(BTNS.rule))cur='pointer';
+  if(curNPC&&(state==='present'||state==='balancing')&&inB(BTNS.assist))cur='pointer';
   if(state==='balancing'&&hovItem!==null)cur='pointer';
   if(state==='balancing'){
     tableItems.forEach((_,i)=>{
