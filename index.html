@@ -228,16 +228,16 @@ const NPCS=[
 ];
 
 const ITEMS=[
-  {id:'sprout', name:'翠苗', el:'wood', desc:'木气疏土'},
-  {id:'bottle', name:'水瓶', el:'water',desc:'流水镇火'},
-  {id:'flame',  name:'火晶', el:'fire', desc:'温火化金'},
-  {id:'gear',   name:'铜齿', el:'metal',desc:'金声克木'},
-  {id:'stone',  name:'玄石', el:'earth',desc:'厚土筑坝'},
-  {id:'leaf',   name:'青叶', el:'wood', desc:'木气舒展'},
-  {id:'drop',   name:'露珠', el:'water',desc:'砚墨含水'},
-  {id:'ember',  name:'炎核', el:'fire', desc:'焰提阳气'},
-  {id:'coin_m', name:'金符', el:'metal',desc:'金针定向'},
-  {id:'clay',   name:'陶片', el:'earth',desc:'土器盛物'},
+  {id:'sprout', name:'翠苗', el:'wood', pol:'yang', desc:'木气疏土'},
+  {id:'bottle', name:'水瓶', el:'water',pol:'yang', desc:'流水镇火'},
+  {id:'flame',  name:'火晶', el:'fire', pol:'yang', desc:'温火化金'},
+  {id:'gear',   name:'铜齿', el:'metal',pol:'yang', desc:'金声克木'},
+  {id:'stone',  name:'玄石', el:'earth',pol:'yang', desc:'厚土筑坝'},
+  {id:'leaf',   name:'青叶', el:'wood', pol:'yin',  desc:'木气舒展'},
+  {id:'drop',   name:'露珠', el:'water',pol:'yin',  desc:'砚墨含水'},
+  {id:'ember',  name:'炎核', el:'fire', pol:'yin',  desc:'焰提阳气'},
+  {id:'coin_m', name:'金符', el:'metal',pol:'yin',  desc:'金针定向'},
+  {id:'clay',   name:'陶片', el:'earth',pol:'yin',  desc:'土器盛物'},
 ];
 
 const YEARS=[
@@ -253,6 +253,7 @@ let state='title';
 let coins=0,day=1,yearIdx=0;
 let npcPool=[],curNPC=null;
 let curEnergy={},dispEnergy={wood:50,fire:50,earth:50,metal:50,water:50};
+let baseEnergy={wood:50,fire:50,earth:50,metal:50,water:50};
 let tableItems=[];
 let energyVisible=false,balanceDone=false;
 let npcX=-30,npcAnim=0,dialogAlpha=0,dialogLine='';
@@ -261,6 +262,7 @@ let particles=[],floats=[];
 let hovItem=null,tick=0;
 const mouse={x:0,y:0};
 let ruleOpen=false,npcMood=0;
+let yinYangNoticeShown=false,showYinYangNotice=false;
 
 function toL(e){
   const r=C.getBoundingClientRect();
@@ -306,6 +308,19 @@ function drawRotateHint(){
   p(ax+13,ay-4,2,10,C0.ty);
   pA(ax,ay-5,20,12,C0.ty,0.18+0.18*pulse);
   txC('横屏后自动继续',LW/2,by+48,3.1,C0.tg,C0.black);
+}
+function drawYinYangIntro(){
+  if(!showYinYangNotice) return;
+  pA(0,0,LW,LH,C0.black,0.78);
+  const bw=Math.min(200,LW-16),bh=66,bx=(LW-bw)/2,by=(LH-bh)/2;
+  p(bx,by,bw,bh,C0.ui_dark);
+  p(bx+1,by+1,bw-2,bh-2,C0.ui_mid);
+  outline(bx,by,bw,bh,C0.border_gold,2);
+  txC('新规则解锁：阴阳道具',LW/2,by+6,3.8,C0.ty,C0.black);
+  tx('阳：+16 / -20 / +6（更猛）',bx+6,by+21,2.8,C0.tw,'left',C0.black);
+  tx('阴：+10 / -14 / +4（更稳）',bx+6,by+30,2.8,C0.tw,'left',C0.black);
+  tx('同元素两件道具效果不同',bx+6,by+40,2.8,C0.tg,'left',C0.black);
+  txC('点击任意处继续',LW/2,by+53,2.8,C0.ty,C0.black);
 }
 
 // ══════════════════════════════════════════════════════
@@ -524,7 +539,8 @@ function drawItems(){
     drawItemIcon(item.el,x,y,12);
 
     ctx.globalAlpha=used?0.28:dim?0.38:1;
-    txC(item.name,x+6,y+13,2.8,ec.c,C0.black);
+    const postfix=isYinYangActive()?(item.pol==='yang'?'·阳':'·阴'):'';
+    txC(item.name+postfix,x+6,y+13,2.8,ec.c,C0.black);
     ctx.globalAlpha=1;
 
     if(used){
@@ -905,6 +921,11 @@ function drawEnergyBars(){
     p(bx,   by,   barW,barH,C0.ui_dark);
     outline(bx,by,barW,barH,ec.c,2);
     p(bx+2, by+2, barW-4,barH-4,ec.bg||C0.bg_floor2);
+    // 平衡区（40~60）可视化
+    const zTop=by+2+Math.round((barH-4)*(1-0.60));
+    const zH=Math.max(2,Math.round((barH-4)*(0.20)));
+    pA(bx+2,zTop,barW-4,zH,C0.tg,0.16);
+    outline(bx+2,zTop,barW-4,zH,C0.tg,1);
 
     // 填充
     const fillH=Math.round((barH-4)*val/100);
@@ -930,7 +951,7 @@ function drawEnergyBars(){
   // 平衡状态
   const bal=getBalance();
   const bc=bal.balanced?C0.tg:EL_C[bal.highest].c;
-  const msg=bal.balanced?'✦ 五行平衡 ✦':EL_C[bal.highest].n+'气旺';
+  const msg=bal.balanced?'✦ 五行平衡(全入40~60) ✦':EL_C[bal.highest].n+'气偏旺';
   txC(msg,baseX+totalW/2,baseY-20,3.5,bc,C0.black);
 
   // [E]关闭
@@ -984,6 +1005,12 @@ function drawHUD(){
   if(gap>tW(title,titleSz)+2){
     txC(title,LW/2,5,titleSz,C0.white,C0.black);
   }
+  if(curNPC){
+    const bal=getBalance();
+    const prog='平衡进度：maxDev '+Math.round(bal.maxDev)+' -> 24';
+    const pc=bal.maxDev<=24?C0.tg:C0.tw;
+    tx(prog,6,14,2.6,pc,'left',C0.black);
+  }
   regUI('hud',sx,sy,sw,sh,'#8fd6ff');
 }
 
@@ -1019,6 +1046,7 @@ function drawRulePanel(){
   const rowsRaw=[
     '相生：木生火，火生土，土生金，金生水，水生木。',
     '相克：木克土，土克水，水克火，火克金，金克木。',
+    '平衡判定：五行全进入40~60区间。',
     '对症：先看最旺元素，再选克它的五行。',
     '点击右上角规则按钮关闭',
   ];
@@ -1158,36 +1186,62 @@ function drawTooltip(){
 // ══════════════════════════════════════════════════════
 //  游戏逻辑
 // ══════════════════════════════════════════════════════
-function getBalance(){
-  const vals=ELS.map(el=>curEnergy[el]||0);
+function isYinYangActive(){return day>=6;}
+function getDelta(item){
+  if(!isYinYangActive()) return {self:14,beat:18,gen:5};
+  return item.pol==='yang'
+    ? {self:16,beat:20,gen:6}
+    : {self:10,beat:14,gen:4};
+}
+function calcMaxDev(energy){
+  const vals=ELS.map(el=>energy[el]||0);
   const avg=vals.reduce((a,b)=>a+b,0)/5;
-  const maxDev=Math.max(...vals.map(v=>Math.abs(v-avg)));
+  return Math.max(...vals.map(v=>Math.abs(v-avg)));
+}
+function applyItemToEnergy(energy,item){
+  const e=item.el,t=BEATS[e],g=GENS[e];
+  const d=getDelta(item);
+  let selfAdd=d.self, beatDown=d.beat, genAdd=d.gen;
+  if(YEARS[yearIdx].boost.includes(e)){
+    // 流年共振：对应元素道具更“有力”
+    selfAdd+=3; beatDown+=2;
+  }
+  energy[e]=clamp((energy[e]||0)+selfAdd,0,100);
+  energy[t]=clamp((energy[t]||0)-beatDown,0,100);
+  energy[g]=clamp((energy[g]||0)+genAdd,0,100);
+}
+function rebuildEnergyFromTable(){
+  curEnergy={...baseEnergy};
+  tableItems.forEach(t=>applyItemToEnergy(curEnergy,t.item));
+}
+function getBalance(){
+  const maxDev=calcMaxDev(curEnergy);
   const highest=ELS.reduce((a,b)=>(curEnergy[a]||0)>(curEnergy[b]||0)?a:b);
-  return{balanced:maxDev<24,highest};
-}
-function applyItem(item){
-  const e=item.el,t=BEATS[e],g=GENS[e];
-  curEnergy[e]=clamp((curEnergy[e]||0)+14,0,100);
-  curEnergy[t]=clamp((curEnergy[t]||0)-18,0,100);
-  curEnergy[g]=clamp((curEnergy[g]||0)+5,0,100);
-}
-function revertItem(item){
-  const e=item.el,t=BEATS[e],g=GENS[e];
-  curEnergy[e]=clamp((curEnergy[e]||0)-14,0,100);
-  curEnergy[t]=clamp((curEnergy[t]||0)+18,0,100);
-  curEnergy[g]=clamp((curEnergy[g]||0)-5,0,100);
+  const inZone=ELS.every(el=>{
+    const v=curEnergy[el]||0;
+    return v>=40&&v<=60;
+  });
+  return{balanced:inZone,highest,maxDev};
 }
 function nextClient(){
   if(state!=='idle'&&state!=='title')return;
+  if(day>=6&&!yinYangNoticeShown){
+    showYinYangNotice=true;
+    return;
+  }
   if(npcPool.length===0)npcPool=[...NPCS].sort(()=>Math.random()-0.5);
   const npc={...npcPool.shift()};
   npc._line=npc.lines[~~(Math.random()*npc.lines.length)];
-  curNPC=npc; curEnergy={...npc.energy};
-  YEARS[yearIdx].boost.forEach(el=>{curEnergy[el]=clamp((curEnergy[el]||0)+12,0,100);});
+  curNPC=npc; baseEnergy={...npc.energy};
+  YEARS[yearIdx].boost.forEach(el=>{baseEnergy[el]=clamp((baseEnergy[el]||0)+12,0,100);});
+  curEnergy={...baseEnergy};
   Object.assign(dispEnergy,curEnergy);
   tableItems=[];energyVisible=false;balanceDone=false;
   npcMood=0;ruleOpen=false;
   npcX=-30;dialogAlpha=0;dialogLine=npc._line;resultTimer=0;
+  if(isYinYangActive()){
+    showF('新规则：同元素分阴阳，效果不同',C0.ty);
+  }
   state='arriving';
 }
 function checkBal(){
@@ -1202,9 +1256,7 @@ function checkBal(){
   }
 }
 function getMaxDev(){
-  const vals=ELS.map(el=>curEnergy[el]||0);
-  const avg=vals.reduce((a,b)=>a+b,0)/5;
-  return Math.max(...vals.map(v=>Math.abs(v-avg)));
+  return calcMaxDev(curEnergy);
 }
 function reactToPlacement(item,beforeHighest,beforeDev){
   const afterDev=getMaxDev();
@@ -1239,7 +1291,14 @@ function placeItemByIndex(i){
   if(tableItems.some(t=>t.item.id===item.id)){showF('已使用',C0.tr);return;}
   const beforeHighest=getBalance().highest;
   const beforeDev=getMaxDev();
-  tableItems.push({item});applyItem(item);
+  tableItems.push({item});
+  rebuildEnergyFromTable();
+  if(YEARS[yearIdx].boost.includes(item.el)){
+    showF('流年共振：'+EL_C[item.el].n+'势增强',C0.ty);
+  }
+  if(isYinYangActive()){
+    showF((item.pol==='yang'?'阳':'阴')+'·'+item.name,C0.tw);
+  }
   reactToPlacement(item,beforeHighest,beforeDev);
   const pos=getItemSlot(i);
   burst(pos.x+6,pos.y+6,EL_C[item.el].c,6);
@@ -1252,7 +1311,8 @@ function undoTableItem(i){
   const t=tableItems[i];
   if(!t) return;
   const tx2=TABLE_X+4+i*36,ty2=TABLE_Y+1;
-  revertItem(t.item);tableItems.splice(i,1);
+  tableItems.splice(i,1);
+  rebuildEnergyFromTable();
   showF('撤回 '+t.item.name,C0.E_l);
   burst(tx2+16,ty2+5,EL_C[t.item.el].c,4);
 }
@@ -1274,6 +1334,12 @@ C.addEventListener('mousemove',e=>{
 
 function handlePointerDown(x,y){
   if(!canPlayNow()) return;
+  if(showYinYangNotice){
+    showYinYangNotice=false;
+    yinYangNoticeShown=true;
+    showF('阴阳规则已启用',C0.ty);
+    return;
+  }
   if(state!=='title'&&inB(BTNS.rule)){ruleOpen=!ruleOpen;return;}
   if(state==='title'){if(inB(BTNS.start)){state='idle';nextClient();}return;}
   if(state==='idle'){if(inB(BTNS.next))nextClient();return;}
@@ -1357,6 +1423,12 @@ window.addEventListener('contextmenu',e=>{
 });
 
 window.addEventListener('keydown',e=>{
+  if(showYinYangNotice&&(e.key==='Enter'||e.key===' '||e.key==='Escape')){
+    showYinYangNotice=false;
+    yinYangNoticeShown=true;
+    showF('阴阳规则已启用',C0.ty);
+    return;
+  }
   if(e.key==='r'||e.key==='R'){
     if(state!=='title') ruleOpen=!ruleOpen;
     return;
@@ -1456,6 +1528,7 @@ function loop(ts){
   drawBtn(BTNS.rule);
   drawAssistPanel();
   drawRulePanel();
+  drawYinYangIntro();
 
   if(state==='idle')drawBtn(BTNS.next);
   if(state==='present')drawBtn(BTNS.diag);
