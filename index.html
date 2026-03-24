@@ -43,10 +43,10 @@ const BTNS={
   start:{x:LW/2-30,y:LH/2+36,w:60,h:12,label:'开始营业'},
   next: {x:LW/2-40,y:LH-14,  w:80,h:11,label:'迎接下一位客人'},
   diag: {x:LW-50,  y:80,     w:44,h:10,label:'查看五行'},
-  rule: {x:LW-34,  y:15,     w:28,h:11,label:'规则'},
-  assist:{x:LW-66, y:15,     w:30,h:11,label:'建议'},
+  rule: {x:LW-34,  y:14,     w:28,h:9, label:'规则'},
+  assist:{x:LW-66, y:14,     w:30,h:9, label:'建议'},
 };
-let wizX=180,wizY=64,npcTx=78,npcY=64;
+let wizX=180,wizY=57,npcTx=78,npcY=68;
 
 function pickFontScale(){
   const coarse=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;
@@ -77,14 +77,14 @@ function syncLayout(){
   wizX=clamp(TABLE_X+TABLE_W+20,148,LW-26);
   // 能量精灵左移：不压住道具位，且与店主形成清晰分工
   npcTx=clamp(TABLE_X-12,92,LW-62);
-  // 统一基线：店主与精灵在同一水平线
-  wizY=66;
-  npcY=66;
+  // 视觉地面线对齐：店长模型更高，需略微上提
+  wizY=57;  // 脚底57+25=82，贴柜台台面
+  npcY=68;
   BTNS.start={x:LW/2-30,y:LH/2+36,w:60,h:12,label:'开始营业'};
   BTNS.next ={x:LW/2-40,y:LH-14,  w:80,h:11,label:'迎接下一位客人'};
   BTNS.diag ={x:LW-50,  y:80,     w:44,h:10,label:'查看五行'};
-  BTNS.rule ={x:LW-34,  y:15,     w:28,h:11,label:'规则'};
-  BTNS.assist={x:LW-66,y:15,      w:30,h:11,label:'建议'};
+  BTNS.rule ={x:LW-34,  y:14,     w:28,h:9, label:'规则'};
+  BTNS.assist={x:LW-66, y:14,     w:30,h:9, label:'建议'};
 }
 function resize(){
   const bs=getComputedStyle(document.body);
@@ -579,9 +579,10 @@ function drawItems(){
       const isYang=ITEM_YANG[item.id];
       const badgeC=isYang?'#f0c040':'#8888ee';
       const badgeTxt=isYang?'阳':'阴';
-      p(x+9,y-5,7,6,C0.ui_dark);
-      outline(x+9,y-5,7,6,badgeC,1);
-      txC(badgeTxt,x+12,y-3,2.5,badgeC,null);
+      // 右下角，避开货架招牌
+      p(x+8,y+8,8,6,C0.ui_dark);
+      outline(x+8,y+8,8,6,badgeC,1);
+      txC(badgeTxt,x+12,y+11,2.5,badgeC,null);
     }
   });
 }
@@ -619,8 +620,9 @@ function drawWizard(){
   pA(x+10,y+15,6,6,C0.E_c,0.2);
   // 衣领
   p(x+7, y+12, 8,2, '#5a6ea0');
-  // 斗篷阴影
-  p(x+4, y+20, 14,4, '#1a2a50');
+  // 下摆与轻微接地（阴影尽量小、贴近）
+  p(x+4, y+20, 14,3, '#1a2a50');
+  p(x+8, y+23, 6,1,  '#162a50');
 }
 function getWizardRect(){
   const x=wizX, y=wizY;
@@ -851,17 +853,18 @@ function drawDialog(){
   ctx.globalAlpha=dialogAlpha;
 
   // 对话框（动态高度，避免台词截断）
-  const bx=8,bw=LW-16;
+  const bw=Math.min(170,LW-70);
+  const bx=8;
   const name=curNPC.name+'·'+curNPC.title;
-  const textX=bx+24, textW=Math.max(44,bw-28);
+  const textX=bx+24, textW=Math.max(40,bw-30);
   const lines=wrapTextLines(dialogLine,textW,3);
   const lineH=tLH(3);
   const textH=Math.max(lineH,lines.length*lineH);
-  const bh=Math.min(68,Math.max(38,18+textH));
+  const bh=Math.min(72,Math.max(42,18+textH));
   // balancing阶段优先保证桌面物品可见，不因能量条而把对话框顶到中部
   const avoidEnergy=energyVisible&&state!=='balancing';
   const bottomLimit=avoidEnergy?(LH-56):(LH-6);
-  const by=clamp(bottomLimit-bh,64,92);
+  const by=clamp(bottomLimit-bh,58,84);
 
   p(bx,   by,   bw,   bh,   C0.ui_dark);
   p(bx+1, by+1, bw-2, bh-2, C0.ui_mid);
@@ -911,20 +914,20 @@ function drawTableItems(){
   }
   tableItems.forEach((t,i)=>{
     const ec=EL_C[t.item.el];
-    const tx2=TABLE_X+4+i*36;
+    const maxN=getMaxItemsAllowed();
+    const slotW=Math.floor((TABLE_W-8)/maxN);
+    const tx2=TABLE_X+4+i*slotW;
     const ty2=TABLE_Y+1;
-    // 底座
-    p(tx2,  ty2,  32,10,C0.ui_dark);
-    outline(tx2,ty2,32,10,ec.c,1);
-    pA(tx2+1,ty2+1,30,8,ec.c,0.1);
-    // 道具
-    drawItemIcon(t.item.el,tx2+10,ty2+0,10);
-    // 名字
-    txC(t.item.name,tx2+16,ty2+10,2.8,ec.c,C0.black);
-    // 撤回按钮（右上角红×）
-    p(tx2+26,ty2-4,8,7,C0.tr);
-    outline(tx2+26,ty2-4,8,7,'#801010',1);
-    txC('X',tx2+30,ty2-3,3,C0.white,C0.black);
+    const sd=slotW-4;
+    p(tx2,ty2,sd,10,C0.ui_dark);
+    outline(tx2,ty2,sd,10,ec.c,1);
+    pA(tx2+1,ty2+1,sd-2,8,ec.c,0.1);
+    drawItemIcon(t.item.el,tx2+sd/2-5,ty2,10);
+    txC(t.item.name,tx2+sd/2,ty2+10,2.8,ec.c,C0.black);
+    const bx2=tx2+sd-8;
+    p(bx2,ty2-4,8,7,C0.tr);
+    outline(bx2,ty2-4,8,7,'#801010',1);
+    txC('X',bx2+4,ty2-1,3,C0.white,C0.black);
   });
 }
 
@@ -932,9 +935,14 @@ function drawTableItems(){
 //  五行能量条（参考图：底部横排，粗边框彩色条）
 // ══════════════════════════════════════════════════════
 function drawEnergyBars(){
-  if(!energyVisible) return;
+  if(!energyVisible){
+    if(state==='balancing'){
+      txC('[E]五行',12,LH-6,2.6,'rgba(160,140,80,0.6)',null);
+    }
+    return;
+  }
   // 参考图：底部一排5个能量条，每条宽约30px
-  const baseX=8, baseY=LH-52, barW=28, barH=36, gap=4;
+  const baseX=8, baseY=LH-58, barW=28, barH=32, gap=4;
   const totalW=(barW+gap)*5-gap;
   regUI('energy',baseX-4,baseY-4,totalW+8,barH+20,'#66b3ff');
 
@@ -994,7 +1002,7 @@ function drawEnergyBars(){
     txC(ec.n,bx+barW/2,by+barH+2,3,ec.c,C0.black);
     txC(val+'%',bx+barW/2,by+barH+8,2.5,C0.tw,C0.black);
     // 在区内打勾
-    if(inZone) txC('✓',bx+barW/2,by+barH+15,2.8,C0.tg,C0.black);
+    if(inZone) txC('✓',bx+barW/2,by+barH+13,2.5,C0.tg,C0.black);
   });
 
   // 平衡状态
@@ -1058,6 +1066,21 @@ function drawHUD(){
     txC(title,LW/2,5,titleSz,C0.white,C0.black);
   }
   regUI('hud',sx,sy,sw,sh,'#8fd6ff');
+
+  // ── 第二行：按钮背景 + 调理时的进度条 ──
+  p(sx,sy+sh+1,sw,11,C0.ui_dark);
+  outline(sx,sy+sh+1,sw,11,C0.ui_border,1);
+  if(curNPC&&state==='balancing'){
+    const dev=Math.round(getMaxDev());
+    const goal=getBalThreshold();
+    const pct=Math.max(0,Math.min(1,(dev-goal)/(60-goal)));
+    const barC=pct<0.3?C0.tg:pct<0.65?C0.ty:C0.tr;
+    const fw=Math.round((sw-2)*(1-pct));
+    if(fw>0){p(sx+1,sy+sh+2,fw,9,barC);}
+    const diffL=getDiffLabel();
+    const devTxt='['+diffL+'] '+(dev<=goal?'✦已平衡':'偏差'+dev+'→'+goal);
+    txC(devTxt,LW/2,sy+sh+6,2.8,dev<=goal?C0.tg:C0.tw,C0.black);
+  }
 }
 
 function drawAssistPanel(){
@@ -1380,14 +1403,17 @@ function isNpcSolvableToday(npc){
 function applyItem(item){
   const e=item.el,t=BEATS[e],g=GENS[e];
   const ef=getItemEffect(item);
-  // 流年加成：道具元素在流年boost列表中，效果*1.3
   const yr=YEARS[yearIdx];
   const boosted=yr.boost.includes(e);
   const mult=boosted?1.3:1;
-  curEnergy[e]=clamp((curEnergy[e]||0)+Math.round(ef.self*mult),0,100);
-  curEnergy[t]=clamp((curEnergy[t]||0)+Math.round(ef.beats*mult),0,100);
-  curEnergy[g]=clamp((curEnergy[g]||0)+Math.round(ef.gens*mult),0,100);
-  // 流年特效提示
+  const de=Math.round(ef.self*mult);
+  const dt=Math.round(ef.beats*mult);
+  const dg=Math.round(ef.gens*mult);
+  // 记录精确 delta，供 revertItem 零误差还原
+  item._delta={e:de,t:dt,g:dg,el:e,tel:t,gel:g};
+  curEnergy[e]=clamp((curEnergy[e]||0)+de,0,100);
+  curEnergy[t]=clamp((curEnergy[t]||0)+dt,0,100);
+  curEnergy[g]=clamp((curEnergy[g]||0)+dg,0,100);
   if(boosted){
     const msgs=YEAR_BOOST_MSGS;
     const msg=msgs[~~(Math.random()*msgs.length)].replace('{el}',EL_C[e].n);
@@ -1396,14 +1422,19 @@ function applyItem(item){
   }
 }
 function revertItem(item){
-  const e=item.el,t=BEATS[e],g=GENS[e];
-  const ef=getItemEffect(item);
-  const yr=YEARS[yearIdx];
-  const mult=yr.boost.includes(e)?1.3:1;
-  // 逆向：self加了，撤回减；beats是负数，撤回加
-  curEnergy[e]=clamp((curEnergy[e]||0)-Math.round(ef.self*mult),0,100);
-  curEnergy[t]=clamp((curEnergy[t]||0)-Math.round(ef.beats*mult),0,100);
-  curEnergy[g]=clamp((curEnergy[g]||0)-Math.round(ef.gens*mult),0,100);
+  if(item._delta){
+    const d=item._delta;
+    curEnergy[d.el] =clamp((curEnergy[d.el] ||0)-d.e,0,100);
+    curEnergy[d.tel]=clamp((curEnergy[d.tel]||0)-d.t,0,100);
+    curEnergy[d.gel]=clamp((curEnergy[d.gel]||0)-d.g,0,100);
+  } else {
+    const e=item.el,t=BEATS[e],g=GENS[e];
+    const ef=getItemEffect(item);
+    const mult=YEARS[yearIdx].boost.includes(e)?1.3:1;
+    curEnergy[e]=clamp((curEnergy[e]||0)-Math.round(ef.self*mult),0,100);
+    curEnergy[t]=clamp((curEnergy[t]||0)-Math.round(ef.beats*mult),0,100);
+    curEnergy[g]=clamp((curEnergy[g]||0)-Math.round(ef.gens*mult),0,100);
+  }
 }
 function _spawnNextClient(){
   if(npcPool.length===0){
@@ -1514,7 +1545,9 @@ function undoTableItem(i){
   if(state!=='balancing') return;
   const t=tableItems[i];
   if(!t) return;
-  const tx2=TABLE_X+4+i*36,ty2=TABLE_Y+1;
+  const _mN2=getMaxItemsAllowed();
+  const _sW2=Math.floor((TABLE_W-8)/_mN2);
+  const tx2=TABLE_X+4+i*_sW2,ty2=TABLE_Y+1;
   revertItem(t.item);tableItems.splice(i,1);
   showF('撤回 '+t.item.name,C0.E_l);
   burst(tx2+16,ty2+5,EL_C[t.item.el].c,4);
@@ -1540,9 +1573,9 @@ function handlePointerDown(x,y){
   if(!canPlayNow()) return;
   // 阴阳介绍弹窗优先处理（任意点击关闭）
   if(yinYangIntroOpen){
-    const bw=Math.min(212,LW-12),bh=110;
+    const bw=Math.min(210,LW-16),bh=108;
     const bx=(LW-bw)/2,by=(LH-bh)/2;
-    const bbw=64,bbh=13,bbx=bx+(bw-bbw)/2,bby=by+bh-18;
+    const bbw=56,bbh=11,bbx=bx+bw/2-28,bby=by+bh-17;
     const clickedOutside=(x<bx||x>bx+bw||y<by||y>by+bh);
     const clickedBtn=(x>=bbx&&x<=bbx+bbw&&y>=bby&&y<=bby+bbh);
     if(clickedBtn||clickedOutside){
@@ -1566,8 +1599,11 @@ function handlePointerDown(x,y){
     // 撤回按钮
     let h=false;
     tableItems.forEach((t,i)=>{
-      const tx2=TABLE_X+4+i*36;const ty2=TABLE_Y+1;
-      if(x>=tx2+26&&x<=tx2+34&&y>=ty2-4&&y<=ty2+3){
+      const _mN3=getMaxItemsAllowed();
+      const _sW3=Math.floor((TABLE_W-8)/_mN3);
+      const tx2=TABLE_X+4+i*_sW3;const ty2=TABLE_Y+1;
+      const _bx3=tx2+(_sW3-4)-8;
+      if(x>=_bx3&&x<=_bx3+8&&y>=ty2-4&&y<=ty2+3){
         undoTableItem(i);
         h=true;
       }
@@ -1743,8 +1779,8 @@ function loop(ts){
   }
   drawBtn(BTNS.rule);
   drawAssistPanel();
-  drawYinYangIntro();
   drawRulePanel();
+  drawYinYangIntro();  // 最后画，保证在最顶层
 
   if(state==='idle')drawBtn(BTNS.next);
   if(state==='present')drawBtn(BTNS.diag);
@@ -1759,8 +1795,11 @@ function loop(ts){
   if(state==='balancing'&&hovItem!==null)cur='pointer';
   if(state==='balancing'){
     tableItems.forEach((_,i)=>{
-      const tx2=TABLE_X+4+i*36,ty2=TABLE_Y+1;
-      if(mouse.x>=tx2+26&&mouse.x<=tx2+34&&mouse.y>=ty2-4&&mouse.y<=ty2+3)cur='pointer';
+      const _mNc=getMaxItemsAllowed();
+      const _sWc=Math.floor((TABLE_W-8)/_mNc);
+      const tx2=TABLE_X+4+i*_sWc,ty2=TABLE_Y+1;
+      const _bc=tx2+(_sWc-4)-8;
+      if(mouse.x>=_bc&&mouse.x<=_bc+8&&mouse.y>=ty2-4&&mouse.y<=ty2+3)cur='pointer';
     });
   }
   C.style.cursor=cur;
