@@ -912,6 +912,18 @@ function drawDialogTextLines(lines,x,y,sz){
 // ══════════════════════════════════════════════════════
 // TABLE布局由 syncLayout() 动态计算
 
+function getTableUndoRect(i){
+  const maxN=getMaxItemsAllowed();
+  const slotW=Math.floor((TABLE_W-8)/maxN);
+  const tx2=TABLE_X+4+i*slotW;
+  const ty2=TABLE_Y+1;
+  const sd=slotW-4;
+  const bxW=7,bxH=6;
+  const bx2=clamp(tx2+sd-bxW-2,tx2+2,tx2+sd-bxW);
+  const by2=ty2-3;
+  return{x:bx2,y:by2,w:bxW,h:bxH};
+}
+
 function drawTableItems(){
   if(tableItems.length===0&&state==='balancing'){
     if(tick%24<12){
@@ -932,10 +944,13 @@ function drawTableItems(){
     pA(tx2+1,ty2+1,sd-2,8,ec.c,0.1);
     drawItemIcon(t.item.el,tx2+sd/2-5,ty2,10);
     txC(t.item.name,tx2+sd/2,ty2+10,2.8,ec.c,C0.black);
-    const bx2=tx2+sd-8;
-    p(bx2,ty2-4,8,7,C0.tr);
-    outline(bx2,ty2-4,8,7,'#801010',1);
-    txC('X',bx2+4,ty2-1,3,C0.white,C0.black);
+    // 仅在可调理阶段显示撤回；成功/离场时画了也无法点击，易与槽位边框重叠造成「坏了」的错觉
+    if(state==='balancing'){
+      const ur=getTableUndoRect(i);
+      p(ur.x,ur.y,ur.w,ur.h,C0.tr);
+      outline(ur.x,ur.y,ur.w,ur.h,'#801010',1);
+      txC('X',ur.x+3,ur.y,2.6,C0.white,C0.black);
+    }
   });
 }
 
@@ -1722,11 +1737,8 @@ function handlePointerDown(x,y){
     // 撤回按钮
     let h=false;
     tableItems.forEach((t,i)=>{
-      const _mN3=getMaxItemsAllowed();
-      const _sW3=Math.floor((TABLE_W-8)/_mN3);
-      const tx2=TABLE_X+4+i*_sW3;const ty2=TABLE_Y+1;
-      const _bx3=tx2+(_sW3-4)-8;
-      if(x>=_bx3&&x<=_bx3+8&&y>=ty2-4&&y<=ty2+3){
+      const ur=getTableUndoRect(i);
+      if(x>=ur.x&&x<=ur.x+ur.w&&y>=ur.y&&y<=ur.y+ur.h){
         undoTableItem(i);
         h=true;
       }
@@ -1919,11 +1931,8 @@ function loop(ts){
   if(state==='balancing'&&hovItem!==null)cur='pointer';
   if(state==='balancing'){
     tableItems.forEach((_,i)=>{
-      const _mNc=getMaxItemsAllowed();
-      const _sWc=Math.floor((TABLE_W-8)/_mNc);
-      const tx2=TABLE_X+4+i*_sWc,ty2=TABLE_Y+1;
-      const _bc=tx2+(_sWc-4)-8;
-      if(mouse.x>=_bc&&mouse.x<=_bc+8&&mouse.y>=ty2-4&&mouse.y<=ty2+3)cur='pointer';
+      const ur=getTableUndoRect(i);
+      if(mouse.x>=ur.x&&mouse.x<=ur.x+ur.w&&mouse.y>=ur.y&&mouse.y<=ur.y+ur.h)cur='pointer';
     });
   }
   C.style.cursor=cur;
